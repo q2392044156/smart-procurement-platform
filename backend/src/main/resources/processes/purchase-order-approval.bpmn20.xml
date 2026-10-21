@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:flowable="http://flowable.org/bpmn" targetNamespace="ProcureMind">
+  <process id="purchaseOrderApproval" name="采购订单审批" isExecutable="true">
+    <startEvent id="start"/><sequenceFlow sourceRef="start" targetRef="financeReview"/>
+    <userTask id="financeReview" name="商业条款复核" flowable:candidateGroups="FINANCE"/>
+    <sequenceFlow sourceRef="financeReview" targetRef="amountGateway"/>
+    <exclusiveGateway id="amountGateway" default="approved"/>
+    <sequenceFlow id="needGm" sourceRef="amountGateway" targetRef="generalManager"><conditionExpression xsi:type="tFormalExpression"><![CDATA[${amount >= 500000}]]></conditionExpression></sequenceFlow>
+    <sequenceFlow id="approved" sourceRef="amountGateway" targetRef="end"/>
+    <userTask id="generalManager" name="总经理审批" flowable:candidateGroups="GENERAL_MANAGER"/>
+    <sequenceFlow sourceRef="generalManager" targetRef="end"/><endEvent id="end"/>
+  </process>
+</definitions>

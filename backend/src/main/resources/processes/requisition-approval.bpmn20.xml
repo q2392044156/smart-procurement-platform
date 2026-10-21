@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:flowable="http://flowable.org/bpmn" targetNamespace="ProcureMind">
+  <process id="requisitionApproval" name="采购申请审批" isExecutable="true">
+    <startEvent id="start"/><sequenceFlow sourceRef="start" targetRef="departmentManager"/>
+    <userTask id="departmentManager" name="部门经理审批" flowable:candidateGroups="DEPT_MANAGER"/>
+    <sequenceFlow sourceRef="departmentManager" targetRef="purchaseManager"/>
+    <userTask id="purchaseManager" name="采购经理审批" flowable:candidateGroups="PURCHASER"/>
+    <sequenceFlow sourceRef="purchaseManager" targetRef="financeGateway"/>
+    <exclusiveGateway id="financeGateway" default="skipFinance"/>
+    <sequenceFlow id="needFinance" sourceRef="financeGateway" targetRef="finance"><conditionExpression xsi:type="tFormalExpression"><![CDATA[${amount >= 50000}]]></conditionExpression></sequenceFlow>
+    <sequenceFlow id="skipFinance" sourceRef="financeGateway" targetRef="end"/>
+    <userTask id="finance" name="财务审批" flowable:candidateGroups="FINANCE"/>
+    <sequenceFlow sourceRef="finance" targetRef="gmGateway"/>
+    <exclusiveGateway id="gmGateway" default="skipGm"/>
+    <sequenceFlow id="needGm" sourceRef="gmGateway" targetRef="generalManager"><conditionExpression xsi:type="tFormalExpression"><![CDATA[${amount >= 500000}]]></conditionExpression></sequenceFlow>
+    <sequenceFlow id="skipGm" sourceRef="gmGateway" targetRef="end"/>
+    <userTask id="generalManager" name="总经理审批" flowable:candidateGroups="GENERAL_MANAGER"/>
+    <sequenceFlow sourceRef="generalManager" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+</definitions>

@@ -3,19 +3,14 @@
 .env.*
 !.env.example
 
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-.deps/
-.pytest_cache/
-
-# Node / Next.js
+# Node / Vue
 node_modules/
-.next/
-out/
+dist/
 *.tsbuildinfo
-next-env.d.ts
+
+# Java
+target/
+*.log
 
 # IDE / OS
 .idea/
