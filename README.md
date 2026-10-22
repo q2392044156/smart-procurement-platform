@@ -51,7 +51,7 @@ $env:AGENT_ENABLED='true'
 docker compose --profile agent up -d --build
 ```
 
-Spring 会从 JWT 中提取用户身份并覆盖浏览器传入的用户字段。Agent 未启用或不可用时，AI 接口返回 503，但不影响业务接口。
+该 profile 会额外启动 Agent API、MCP 网关和 Agent 专用 MongoDB。Spring 会从 JWT 中提取用户身份并覆盖浏览器传入的用户字段；MCP 再用内部令牌、用户 ID 与请求 ID访问业务后端。Agent 未启用或不可用时，AI 接口返回 503，但不影响业务接口。
 
 ## 本地开发
 

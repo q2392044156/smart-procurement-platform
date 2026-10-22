@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, nextTick } from 'vue'
-import * as echarts from 'echarts'
+import * as echarts from 'echarts/core'
+import { LineChart, PieChart } from 'echarts/charts'
+import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+import type { EChartsType } from 'echarts/core'
 import http from '@/api/http'
 import type { Dict } from '@/types'
-const data=ref<Dict>({}),trend=ref<HTMLElement>(),status=ref<HTMLElement>();let charts:echarts.ECharts[]=[]
+echarts.use([LineChart,PieChart,GridComponent,LegendComponent,TooltipComponent,CanvasRenderer])
+const data=ref<Dict>({}),trend=ref<HTMLElement>(),status=ref<HTMLElement>();let charts:EChartsType[]=[]
 async function load(){data.value=await http.get('/dashboard/summary');await nextTick();draw()}
 function draw(){charts.forEach(c=>c.dispose());charts=[];if(trend.value){const c=echarts.init(trend.value);c.setOption({grid:{left:42,right:20,top:30,bottom:30},tooltip:{trigger:'axis'},xAxis:{type:'category',data:(data.value.monthlyTrend||[]).map((x:Dict)=>x.month)},yAxis:{type:'value'},series:[{type:'line',smooth:true,symbolSize:8,data:(data.value.monthlyTrend||[]).map((x:Dict)=>x.amount),areaStyle:{color:'rgba(11,92,255,.1)'},lineStyle:{color:'#0b5cff',width:3},itemStyle:{color:'#0b5cff'}}]});charts.push(c)}if(status.value){const c=echarts.init(status.value);c.setOption({tooltip:{trigger:'item'},legend:{bottom:0},series:[{type:'pie',radius:['48%','72%'],center:['50%','43%'],label:{show:false},data:data.value.orderStatus||[]} ]});charts.push(c)}}
 function resize(){charts.forEach(c=>c.resize())}onMounted(()=>{load();window.addEventListener('resize',resize)});onBeforeUnmount(()=>window.removeEventListener('resize',resize))
