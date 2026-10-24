@@ -6,7 +6,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;import java.util.Map;
 
-@RestController @RequestMapping("/api/v1")
+@RestController @RequestMapping("/api/v1") @PreAuthorize("hasAuthority('inventory:view')")
 public class InventoryController {
     private final ReceiptService receipts;private final JdbcTemplate jdbc;public InventoryController(ReceiptService receipts,JdbcTemplate jdbc){this.receipts=receipts;this.jdbc=jdbc;}
     @PostMapping("/receipts") @PreAuthorize("hasAuthority('inventory:receive')") public ApiResponse<Map<String,Object>> receive(@RequestHeader("Idempotency-Key") String key,@RequestBody ReceiptService.Request r){return ApiResponse.ok(receipts.receive(key,r));}

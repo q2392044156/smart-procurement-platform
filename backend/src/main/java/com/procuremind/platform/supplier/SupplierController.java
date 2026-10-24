@@ -12,6 +12,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/suppliers")
+@PreAuthorize("hasAuthority('supplier:view')")
 public class SupplierController {
     private final JdbcTemplate jdbc;
     public SupplierController(JdbcTemplate jdbc){this.jdbc=jdbc;}

@@ -68,6 +68,24 @@ npm run dev
 
 前端开发服务器将 `/api` 代理到 `http://localhost:8080`。
 
+## 自动化验收
+
+默认服务健康后，可以执行可重复的端到端业务验收：
+
+```powershell
+.\scripts\acceptance-smoke.ps1
+```
+
+脚本通过 Nginx 入口真实调用 API，覆盖角色权限与数据范围、三档金额审批链、驳回重提及多流程历史、申请转订单、订单审批、分批收货、幂等重放、超量收货、批次号校验、序列号唯一性以及库存余额一致性。脚本会写入带“验收”用途的演示单据。
+
+浏览器端登录、菜单权限和越权路由由 Playwright 验证：
+
+```powershell
+cd frontend
+npx playwright install chromium
+npm run test:e2e
+```
+
 ## 关键业务约束
 
 - 采购申请：`DRAFT → PENDING_APPROVAL → APPROVED/REJECTED → CONVERTED/CANCELLED`

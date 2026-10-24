@@ -18,6 +18,7 @@ import java.util.*;
 
 @RestController
 @RequestMapping("/api/v1")
+@PreAuthorize("hasAuthority('masterdata:view')")
 public class MasterDataController {
     private final JdbcTemplate jdbc; private final ObjectMapper mapper;
     public MasterDataController(JdbcTemplate jdbc, ObjectMapper mapper) { this.jdbc=jdbc; this.mapper=mapper; }

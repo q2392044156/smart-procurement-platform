@@ -12,13 +12,14 @@ import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 
-@RestController @RequestMapping("/api/v1/ai")
+@RestController @RequestMapping("/api/v1/ai") @PreAuthorize("hasAuthority('agent:use')")
 public class AgentController {
     private final WebClient client;private final boolean enabled;private final String token;
     public AgentController(WebClient.Builder builder,@Value("${procuremind.agent.base-url}")String url,@Value("${procuremind.agent.enabled}")boolean enabled,@Value("${procuremind.agent.internal-token}")String token){this.client=builder.baseUrl(url).build();this.enabled=enabled;this.token=token;}

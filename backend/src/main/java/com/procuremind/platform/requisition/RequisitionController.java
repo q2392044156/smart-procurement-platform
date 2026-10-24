@@ -6,7 +6,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;import java.util.Map;
 
-@RestController @RequestMapping("/api/v1/requisitions")
+@RestController @RequestMapping("/api/v1/requisitions") @PreAuthorize("hasAuthority('requisition:view')")
 public class RequisitionController {
     private final RequisitionService service;public RequisitionController(RequisitionService service){this.service=service;}
     @GetMapping public ApiResponse<List<Map<String,Object>>> list(){return ApiResponse.ok(service.list());}
