@@ -12,10 +12,10 @@ const routes = [
     { path:'orders', component:()=>import('@/views/purchaseorder/OrdersView.vue'), meta:{title:'采购订单',permission:'purchaseorder:view'} },
     { path:'inventory', component:()=>import('@/views/inventory/InventoryView.vue'), meta:{title:'收货与库存',permission:'inventory:view'} },
     { path:'assistant', component:()=>import('@/views/agent/AssistantView.vue'), meta:{title:'AI采购助手',permission:'agent:use'} },
-    { path:'system', component:()=>import('@/views/system/SystemView.vue'), meta:{title:'系统与审计',permission:'system:user:view'} }
+    { path:'system', component:()=>import('@/views/system/SystemView.vue'), meta:{title:'系统与审计',permission:['system:user:view','audit:view']} }
   ]},
   { path:'/:pathMatch(.*)*', redirect:'/' }
 ]
 const router=createRouter({history:createWebHistory(),routes})
-router.beforeEach(async to=>{const auth=useAuthStore();if(!to.meta.public&&!auth.loggedIn)return{path:'/login',query:{redirect:to.fullPath}};if(!to.meta.public&&localStorage.getItem('pm_access_token')&&!auth.user)try{await auth.loadMe()}catch{return'/login'};const permission=to.meta.permission as string|undefined;if(permission&&!auth.can(permission))return'/dashboard';document.title=`${to.meta.title||''} - ProcureMind`;return true})
+router.beforeEach(async to=>{const auth=useAuthStore();if(!to.meta.public&&!auth.loggedIn)return{path:'/login',query:{redirect:to.fullPath}};if(!to.meta.public&&localStorage.getItem('pm_access_token')&&!auth.user)try{await auth.loadMe()}catch{return'/login'};const permission=to.meta.permission as string|string[]|undefined;if(permission&&!(Array.isArray(permission)?permission.some(p=>auth.can(p)):auth.can(permission)))return'/dashboard';document.title=`${to.meta.title||''} - ProcureMind`;return true})
 export default router

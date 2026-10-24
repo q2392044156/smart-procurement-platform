@@ -4,8 +4,14 @@ import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestValueException;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -22,9 +28,22 @@ public class GlobalExceptionHandler {
                 ? m.getBindingResult().getFieldError().getDefaultMessage() : e.getMessage();
         return ResponseEntity.badRequest().body(ApiResponse.error(400, message));
     }
+    @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class,
+            MissingRequestValueException.class, HandlerMethodValidationException.class})
+    ResponseEntity<ApiResponse<Void>> malformed(Exception e) {
+        return ResponseEntity.badRequest().body(ApiResponse.error(400, "请求参数格式错误或缺少必填参数"));
+    }
     @ExceptionHandler(AccessDeniedException.class)
     ResponseEntity<ApiResponse<Void>> denied(AccessDeniedException e) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponse.error(403, "无权执行此操作"));
+    }
+    @ExceptionHandler(EmptyResultDataAccessException.class)
+    ResponseEntity<ApiResponse<Void>> notFound(EmptyResultDataAccessException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(404, "数据不存在"));
+    }
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    ResponseEntity<ApiResponse<Void>> conflict(DataIntegrityViolationException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(409, "数据冲突，请检查唯一编码、关联数据或字段取值"));
     }
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiResponse<Void>> unknown(Exception e) {

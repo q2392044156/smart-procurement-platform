@@ -8,9 +8,10 @@ const auth=useAuthStore(),route=useRoute(),router=useRouter(),collapsed=ref(fals
 const menus=[
   ['/dashboard','经营看板','dashboard:view',DataAnalysis],['/materials','物资主数据','masterdata:view',Box],['/suppliers','供应商管理','supplier:view',OfficeBuilding],
   ['/requisitions','采购申请','requisition:view',Document],['/workflow','审批中心','workflow:approve',Stamp],['/orders','采购订单','purchaseorder:view',ShoppingCart],
-  ['/inventory','收货与库存','inventory:view',Tickets],['/assistant','AI采购助手','agent:use',MagicStick],['/system','系统与审计','system:user:view',Setting]
+  ['/inventory','收货与库存','inventory:view',Tickets],['/assistant','AI采购助手','agent:use',MagicStick],['/system','系统与审计',['system:user:view','audit:view'],Setting]
 ] as const
-const visible=computed(()=>menus.filter(m=>auth.can(m[2])))
+function allowed(permission:string|readonly string[]){return typeof permission==='string'?auth.can(permission):permission.some(p=>auth.can(p))}
+const visible=computed(()=>menus.filter(m=>allowed(m[2])))
 async function logout(){await auth.logout();router.replace('/login')}
 </script>
 <template>

@@ -8,6 +8,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
+import java.time.Duration;
 
 @Service
 public class AuthService {
@@ -19,10 +20,17 @@ public class AuthService {
         this.users = users; this.encoder = encoder; this.jwt = jwt; this.redis = redis;
     }
     public TokenPair login(String username, String password) {
-        UserDirectory.UserRecord row = users.byUsername(username);
-        if (!row.enabled() || !encoder.matches(password, row.passwordHash())) throw new BusinessException(HttpStatus.UNAUTHORIZED, "用户名或密码错误");
+        String failureKey = "login:fail:" + username.trim().toLowerCase(java.util.Locale.ROOT);
+        String failures = redis.opsForValue().get(failureKey);
+        if (failures != null && Long.parseLong(failures) >= 5) throw new BusinessException(HttpStatus.TOO_MANY_REQUESTS, "登录失败次数过多，请15分钟后重试");
+        UserDirectory.UserRecord row;
+        try { row = users.byUsername(username); }
+        catch (BusinessException e) { recordFailure(failureKey); throw e; }
+        if (!row.enabled() || !encoder.matches(password, row.passwordHash())) { recordFailure(failureKey); throw new BusinessException(HttpStatus.UNAUTHORIZED, "用户名或密码错误"); }
+        redis.delete(failureKey);
         return issue(users.current(row.id()));
     }
+    private void recordFailure(String key) { Long count=redis.opsForValue().increment(key);if(count!=null&&count==1)redis.expire(key,Duration.ofMinutes(15)); }
     public TokenPair refresh(String refreshToken) {
         try {
             Claims claims = jwt.parse(refreshToken);

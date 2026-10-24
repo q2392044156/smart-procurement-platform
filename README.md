@@ -9,11 +9,21 @@
 - 基础设施：MySQL 8.4、Redis 7、MinIO、Docker Compose
 - 可选智能能力：同级目录 `../procurement-agent-harness`，通过 Spring Boot 代理 SSE
 
-## 一键启动
+## 完整启动与关闭
+
+前置条件：Docker Desktop 已启动，3000、8080、9000、9001 端口未被占用。首次运行：
 
 ```powershell
+cd E:\project\my_project2\smart-procurement-platform
 Copy-Item .env.example .env
 docker compose up -d --build
+docker compose ps
+```
+
+正常运行时 `mysql`、`redis`、`minio`、`backend` 应显示 `healthy`，`frontend` 应显示 `Up`。查看启动日志：
+
+```powershell
+docker compose logs -f backend frontend
 ```
 
 访问入口：
@@ -24,6 +34,20 @@ docker compose up -d --build
 - 后端健康检查：http://localhost:8080/actuator/health
 
 Flyway 会自动建表，应用首次启动自动写入 BCrypt 演示账号和制造业演示主数据。
+
+完整关闭但保留 MySQL、Redis、MinIO 数据卷：
+
+```powershell
+docker compose down
+```
+
+只停止前后端、继续保留基础设施：
+
+```powershell
+docker compose stop frontend backend
+```
+
+恢复：`docker compose start`。只有在确认需要清空全部业务数据时才执行 `docker compose down -v`；该命令会删除数据库、缓存、文件和 Agent MongoDB 数据卷。
 
 ## 演示账号
 
@@ -37,6 +61,8 @@ Flyway 会自动建表，应用首次启动自动写入 BCrypt 演示账号和�
 | 仓管员 | `warehouse` | `Warehouse@123` |
 | 总经理 | `gm` | `Gm@123` |
 | 审计员 | `auditor` | `Audit@123` |
+
+角色职责：申请人创建、编辑和提交本人申请；部门经理审批本部门申请；采购员维护供应商、把已批准申请转订单并提交订单；财务审批中高金额申请及订单商业条款；仓管员执行分批收货并查看库存；总经理审批高金额申请；审计员只读业务数据并查看操作审计；系统管理员拥有全部菜单和数据范围。
 
 建议演示顺序：申请人创建并提交申请 → 根据金额切换对应审批账号 → 采购员转换并提交订单 → 财务/总经理审批 → 仓管员分批收货 → 查看库存余额、流水及看板。
 
@@ -56,16 +82,20 @@ Flyway 会自动建表，应用首次启动自动写入 BCrypt 演示账号和�
 
 ## 启用 Agent（可选）
 
-准备好 `../procurement-agent-harness/.env` 后：
+准备好 `../procurement-agent-harness/.env` 后，先在平台 `.env` 中把 `AGENT_INTERNAL_TOKEN` 改为至少32位的随机值，并让 Agent/MCP 使用同一个值。占位值或 `change-me` 会被后端拒绝启动：
 
 ```powershell
 $env:AGENT_ENABLED='true'
 docker compose --profile agent up -d --build
 ```
 
+关闭包含 Agent 的整套服务：`docker compose --profile agent down`。
+
 该 profile 会额外启动 Agent API、MCP 网关和 Agent 专用 MongoDB。Spring 会从 JWT 中提取用户身份并覆盖浏览器传入的用户字段；MCP 再用内部令牌、用户 ID 与请求 ID访问业务后端。Agent 未启用或不可用时，AI 接口返回 503，但不影响业务接口。
 
 ## 本地开发
+
+先启动基础设施：`docker compose up -d mysql redis minio`，再分别打开两个终端：
 
 ```powershell
 cd backend
@@ -79,6 +109,8 @@ npm run dev
 ```
 
 前端开发服务器将 `/api` 代理到 `http://localhost:8080`。
+
+开发模式关闭方式：在前后端两个终端中按 `Ctrl+C`，然后执行 `docker compose down` 关闭基础设施。
 
 ## 自动化验收
 
@@ -123,3 +155,10 @@ npm run test:e2e
 - 批次物资必须登记批次号；序列号物资逐个登记且全局唯一
 - 收货与库存入账处于同一事务；余额使用乐观锁；写入接口通过 `Idempotency-Key` 防重
 - 金额使用 `DECIMAL(18,2)` / `BigDecimal`，Long ID 和金额在 JSON 中序列化为字符串
+
+## 当前边界与安全说明
+
+- 核心采购闭环和角色权限可独立演示，但它仍是面试展示型 MVP，不等同于生产级 ERP。询报价、合同、发票、三单匹配、质检、资产维保、消息通知和多租户不在首版范围。
+- 文件服务已限制类型、大小及下载者身份，但采购单附件关联和前端附件控件仍未实现；系统、仓库、单位、品牌目前以初始化和只读展示为主。
+- 内部旧 Agent API 在 Agent 关闭时返回404，Nginx不向浏览器代理该路径；启用后同时校验强内部令牌、用户身份和业务权限。
+- Compose 对外端口仅绑定 `127.0.0.1`。若部署到服务器，必须更换所有演示密码和 `.env` 密钥，并在反向代理上启用 HTTPS、限制 Swagger/MinIO 控制台访问。

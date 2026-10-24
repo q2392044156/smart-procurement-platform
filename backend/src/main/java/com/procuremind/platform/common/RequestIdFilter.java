@@ -18,7 +18,7 @@ public class RequestIdFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         String requestId = Optional.ofNullable(request.getHeader("X-Request-Id"))
-                .filter(s -> !s.isBlank()).orElse(UUID.randomUUID().toString());
+                .filter(s -> s.matches("[A-Za-z0-9._-]{1,64}")).orElse(UUID.randomUUID().toString());
         MDC.put("requestId", requestId);
         response.setHeader("X-Request-Id", requestId);
         try { chain.doFilter(request, response); } finally { MDC.remove("requestId"); }

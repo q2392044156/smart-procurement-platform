@@ -7,6 +7,9 @@ import com.procuremind.platform.common.BusinessException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -31,6 +34,7 @@ public class MasterDataController {
     }
     @PostMapping("/material-categories") @PreAuthorize("hasAuthority('masterdata:edit')")
     public ApiResponse<Map<String,Object>> createCategory(@Valid @RequestBody CategoryRequest r) {
+        if(r.parentId()!=null&&jdbc.queryForObject("select count(*) from md_material_category where id=? and deleted=0",Long.class,r.parentId())==0)throw new BusinessException(HttpStatus.BAD_REQUEST,"上级分类不存在");
         jdbc.update("insert into md_material_category(parent_id,code,name,description,sort_order) values(?,?,?,?,?)", r.parentId(),r.code(),r.name(),r.description(),r.sortOrder()==null?0:r.sortOrder());
         Long id=jdbc.queryForObject("select id from md_material_category where code=?",Long.class,r.code());
         if(r.attributes()!=null) for(AttributeRequest a:r.attributes()) jdbc.update("insert into md_category_attribute(category_id,code,name,value_type,required,options_json,sort_order) values(?,?,?,?,?,?,?)",id,a.code(),a.name(),a.valueType(),Boolean.TRUE.equals(a.required()),json(a.options()),a.sortOrder()==null?0:a.sortOrder());
@@ -43,6 +47,9 @@ public class MasterDataController {
     }
     @PostMapping("/materials") @PreAuthorize("hasAuthority('masterdata:edit')")
     public ApiResponse<Map<String,Object>> createMaterial(@Valid @RequestBody MaterialRequest r) {
+        if(jdbc.queryForObject("select count(*) from md_material_category where id=? and deleted=0",Long.class,r.categoryId())==0)throw new BusinessException(HttpStatus.BAD_REQUEST,"物资分类不存在");
+        if(jdbc.queryForObject("select count(*) from md_unit where id=?",Long.class,r.unitId())==0)throw new BusinessException(HttpStatus.BAD_REQUEST,"计量单位不存在");
+        if(r.brandId()!=null&&jdbc.queryForObject("select count(*) from md_brand where id=?",Long.class,r.brandId())==0)throw new BusinessException(HttpStatus.BAD_REQUEST,"品牌不存在");
         validateAttributes(r.categoryId(),r.attributes());
         jdbc.update("insert into md_material(code,name,category_id,unit_id,brand_id,specification,tracking_mode,min_stock,attributes_json) values(?,?,?,?,?,?,?,?,?)",r.code(),r.name(),r.categoryId(),r.unitId(),r.brandId(),r.specification(),r.trackingMode(),r.minStock()==null?BigDecimal.ZERO:r.minStock(),json(r.attributes()));
         return ApiResponse.ok(Map.of("id",jdbc.queryForObject("select id from md_material where code=?",Long.class,r.code())));
@@ -55,10 +62,13 @@ public class MasterDataController {
         List<Map<String,Object>> defs=jdbc.queryForList("select code,name,value_type valueType,required,options_json options from md_category_attribute where category_id=?",categoryId);
         Map<String,Object> values=attributes==null?Map.of():attributes;
         for(var d:defs){String code=d.get("code").toString(); Object value=values.get(code); boolean required=d.get("required") instanceof Number n?n.intValue()!=0:Boolean.parseBoolean(String.valueOf(d.get("required")));if(required&&(value==null||value.toString().isBlank())) throw new BusinessException(HttpStatus.BAD_REQUEST,d.get("name")+"不能为空");
-            if(value!=null && "NUMBER".equals(d.get("valueType"))) try{new BigDecimal(value.toString());}catch(Exception e){throw new BusinessException(HttpStatus.BAD_REQUEST,d.get("name")+"必须是数值");}}
+            if(value!=null && "NUMBER".equals(d.get("valueType"))) try{new BigDecimal(value.toString());}catch(Exception e){throw new BusinessException(HttpStatus.BAD_REQUEST,d.get("name")+"必须是数值");}
+            if(value!=null && "BOOLEAN".equals(d.get("valueType"))&&!List.of("true","false").contains(value.toString().toLowerCase()))throw new BusinessException(HttpStatus.BAD_REQUEST,d.get("name")+"必须是布尔值");
+            if(value!=null && "DATE".equals(d.get("valueType")))try{java.time.LocalDate.parse(value.toString());}catch(Exception e){throw new BusinessException(HttpStatus.BAD_REQUEST,d.get("name")+"必须是日期");}
+            if(value!=null && "ENUM".equals(d.get("valueType"))){try{List<?> options=mapper.readValue(String.valueOf(d.get("options")),List.class);if(!options.contains(value.toString()))throw new BusinessException(HttpStatus.BAD_REQUEST,d.get("name")+"不在可选范围内");}catch(BusinessException e){throw e;}catch(Exception e){throw new BusinessException(HttpStatus.BAD_REQUEST,d.get("name")+"枚举定义无效");}}}
     }
     private String json(Object value){try{return value==null?null:mapper.writeValueAsString(value);}catch(JsonProcessingException e){throw new BusinessException(HttpStatus.BAD_REQUEST,"JSON数据格式错误");}}
-    public record CategoryRequest(Long parentId,@NotBlank String code,@NotBlank String name,String description,Integer sortOrder,List<AttributeRequest> attributes){}
-    public record AttributeRequest(@NotBlank String code,@NotBlank String name,@NotBlank String valueType,Boolean required,List<String> options,Integer sortOrder){}
-    public record MaterialRequest(@NotBlank String code,@NotBlank String name,@NotNull Long categoryId,@NotNull Long unitId,Long brandId,String specification,@NotBlank String trackingMode,BigDecimal minStock,Map<String,Object> attributes){}
+    public record CategoryRequest(Long parentId,@NotBlank @Size(max=50) String code,@NotBlank @Size(max=100) String name,@Size(max=500) String description,Integer sortOrder,List<@Valid AttributeRequest> attributes){}
+    public record AttributeRequest(@NotBlank @Size(max=50) String code,@NotBlank @Size(max=100) String name,@NotBlank @Pattern(regexp="TEXT|NUMBER|BOOLEAN|DATE|ENUM") String valueType,Boolean required,List<@Size(max=100) String> options,Integer sortOrder){}
+    public record MaterialRequest(@NotBlank @Size(max=50) String code,@NotBlank @Size(max=200) String name,@NotNull Long categoryId,@NotNull Long unitId,Long brandId,@Size(max=500) String specification,@NotBlank @Pattern(regexp="QUANTITY|BATCH|SERIAL") String trackingMode,@DecimalMin("0") BigDecimal minStock,Map<String,Object> attributes){}
 }

@@ -31,6 +31,24 @@ public class DataScopeService {
         require("select count(*) from po_purchase_order o join sys_user u on u.id=o.purchaser_id where o.id=? and o.deleted=0 and " + filter.clause(), id, filter.args());
     }
 
+    public void requireBusinessKey(String businessKey) {
+        if (businessKey == null || !businessKey.contains(":")) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "流程业务标识无效");
+        }
+        String[] parts = businessKey.split(":", 2);
+        Long id;
+        try { id = Long.valueOf(parts[1]); }
+        catch (NumberFormatException e) { throw new BusinessException(HttpStatus.BAD_REQUEST, "流程业务标识无效"); }
+        if ("REQUISITION".equals(parts[0])) requireRequisition(id);
+        else if ("PURCHASE_ORDER".equals(parts[0])) requirePurchaseOrder(id);
+        else throw new BusinessException(HttpStatus.BAD_REQUEST, "不支持的流程业务类型");
+    }
+
+    public boolean canAccessBusinessKey(String businessKey) {
+        try { requireBusinessKey(businessKey); return true; }
+        catch (BusinessException ignored) { return false; }
+    }
+
     private SqlFilter filter(String departmentColumn, String ownerColumn) {
         CurrentUser user = SecurityUtils.currentUser();
         Scope scope = effectiveScope(user.id());

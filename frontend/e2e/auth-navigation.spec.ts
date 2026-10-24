@@ -47,3 +47,12 @@ test('申请人可打开采购申请新建表单并看到预算合计', async ({
   await expect(page.getByText('预算合计', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '+ 添加明细' })).toBeVisible()
 })
+
+test('审计员可进入操作审计但看不到系统管理数据', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByRole('button', { name: '审计员', exact: true }).click()
+  await page.getByRole('button', { name: '登录平台' }).click()
+  await page.getByRole('menuitem', { name: '系统与审计' }).click()
+  await expect(page.getByRole('tab', { name: '操作审计' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '用户' })).toHaveCount(0)
+})

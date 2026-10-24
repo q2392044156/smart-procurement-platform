@@ -10,7 +10,8 @@ const departments = ref<Dict[]>([])
 const roles = ref<Dict[]>([])
 const permissions = ref<Dict[]>([])
 const audits = ref<Dict[]>([])
-const tab = ref('users')
+const canViewSystem = computed(() => auth.can('system:user:view'))
+const tab = ref(canViewSystem.value ? 'users' : 'audit')
 const dataScopeName: Dict = { ALL: '全部数据', DEPARTMENT: '当前部门', DEPARTMENT_AND_CHILDREN: '当前部门及下级', SELF: '仅本人' }
 const permissionType: Dict = { MENU: '菜单', BUTTON: '按钮', API: '接口' }
 
@@ -27,12 +28,13 @@ const departmentTree = computed(() => {
 })
 
 async function load() {
-  const requests: Promise<unknown>[] = [http.get('/users'), http.get('/departments'), http.get('/roles'), http.get('/permissions')]
-  const result = await Promise.all(requests)
-  users.value = result[0] as Dict[]
-  departments.value = result[1] as Dict[]
-  roles.value = result[2] as Dict[]
-  permissions.value = result[3] as Dict[]
+  if (canViewSystem.value) {
+    const result = await Promise.all([http.get('/users'), http.get('/departments'), http.get('/roles'), http.get('/permissions')])
+    users.value = result[0] as Dict[]
+    departments.value = result[1] as Dict[]
+    roles.value = result[2] as Dict[]
+    permissions.value = result[3] as Dict[]
+  }
   if (auth.can('audit:view')) audits.value = await http.get('/audits')
 }
 
@@ -45,7 +47,7 @@ onMounted(load)
     <div class="page-head"><div><h1>系统与审计</h1><p>组织、角色、数据范围、权限项及关键操作留痕</p></div><el-button @click="load">刷新</el-button></div>
     <div class="panel panel-pad">
       <el-tabs v-model="tab">
-        <el-tab-pane label="用户" name="users">
+        <el-tab-pane v-if="canViewSystem" label="用户" name="users">
           <el-table :data="users">
             <el-table-column prop="username" label="账号" />
             <el-table-column prop="displayName" label="姓名" />
@@ -53,21 +55,21 @@ onMounted(load)
             <el-table-column label="状态"><template #default="s"><el-tag :type="s.row.enabled ? 'success' : 'danger'">{{ s.row.enabled ? '启用' : '停用' }}</el-tag></template></el-table-column>
           </el-table>
         </el-tab-pane>
-        <el-tab-pane label="组织架构" name="departments">
+        <el-tab-pane v-if="canViewSystem" label="组织架构" name="departments">
           <el-table :data="departmentTree" row-key="id" default-expand-all>
             <el-table-column prop="name" label="部门名称" />
             <el-table-column prop="code" label="部门编码" />
             <el-table-column prop="parentId" label="上级部门ID"><template #default="s">{{ s.row.parentId || '—' }}</template></el-table-column>
           </el-table>
         </el-tab-pane>
-        <el-tab-pane label="角色与数据范围" name="roles">
+        <el-tab-pane v-if="canViewSystem" label="角色与数据范围" name="roles">
           <el-table :data="roles">
             <el-table-column prop="code" label="角色编码" />
             <el-table-column prop="name" label="角色名称" />
             <el-table-column label="数据范围"><template #default="s"><el-tag>{{ dataScopeName[s.row.dataScope] || s.row.dataScope }}</el-tag></template></el-table-column>
           </el-table>
         </el-tab-pane>
-        <el-tab-pane label="权限清单" name="permissions">
+        <el-tab-pane v-if="canViewSystem" label="权限清单" name="permissions">
           <el-table :data="permissions">
             <el-table-column prop="code" label="权限编码" min-width="220" />
             <el-table-column prop="name" label="权限名称" />
