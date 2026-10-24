@@ -16,7 +16,7 @@ public class AuditAspect {
     private final HttpServletRequest request;
     private final ObjectMapper mapper;
     public AuditAspect(JdbcTemplate jdbc, HttpServletRequest request, ObjectMapper mapper) { this.jdbc=jdbc; this.request=request; this.mapper=mapper; }
-    @Around("@within(org.springframework.web.bind.annotation.RestController) && (execution(@org.springframework.web.bind.annotation.PostMapping * *(..)) || execution(@org.springframework.web.bind.annotation.PutMapping * *(..)) || execution(@org.springframework.web.bind.annotation.DeleteMapping * *(..)))")
+    @Around("@within(org.springframework.web.bind.annotation.RestController) && (execution(@org.springframework.web.bind.annotation.PostMapping * *(..)) || execution(@org.springframework.web.bind.annotation.PutMapping * *(..)) || execution(@org.springframework.web.bind.annotation.PatchMapping * *(..)) || execution(@org.springframework.web.bind.annotation.DeleteMapping * *(..)))")
     public Object audit(ProceedingJoinPoint point) throws Throwable {
         long begin=System.currentTimeMillis(); String result="SUCCESS"; String error=null;
         try { return point.proceed(); } catch (Throwable e) { result="FAILED"; error=e.getMessage(); throw e; }

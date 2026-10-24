@@ -34,6 +34,13 @@ test('管理员可使用补齐后的主数据、供应商档案和系统视图',
   await page.keyboard.press('Escape')
 
   await page.getByRole('menuitem', { name: '系统与审计' }).click()
+  await expect(page.getByRole('button', { name: '新增用户' })).toBeVisible()
+  await page.getByRole('tab', { name: '组织架构' }).click()
+  await expect(page.getByRole('button', { name: '新增一级部门' })).toBeVisible()
+  await expect(page.getByRole('tabpanel', { name: '组织架构' }).getByText('质量管理部', { exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: '角色与权限' }).click()
+  await expect(page.getByRole('button', { name: '新增角色' })).toBeVisible()
+  await expect(page.getByRole('tabpanel', { name: '角色与权限' }).getByText('采购只读', { exact: true })).toBeVisible()
   await page.getByRole('tab', { name: '权限清单' }).click()
   await expect(page.getByText('dashboard:view', { exact: true })).toBeVisible()
 })

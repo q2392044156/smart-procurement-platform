@@ -24,8 +24,8 @@ public class UserDirectory {
     public CurrentUser current(Long id) {
         List<CurrentUser> rows = jdbc.query("select id,username,display_name,department_id from sys_user where id=? and enabled=1 and deleted=0",
                 (rs, n) -> {
-                    Set<String> roles = new HashSet<>(jdbc.queryForList("select r.code from sys_role r join sys_user_role ur on ur.role_id=r.id where ur.user_id=?", String.class, id));
-                    Set<String> permissions = new HashSet<>(jdbc.queryForList("select distinct p.code from sys_permission p join sys_role_permission rp on rp.permission_id=p.id join sys_user_role ur on ur.role_id=rp.role_id where ur.user_id=?", String.class, id));
+                    Set<String> roles = new HashSet<>(jdbc.queryForList("select r.code from sys_role r join sys_user_role ur on ur.role_id=r.id where ur.user_id=? and r.deleted=0 and r.enabled=1", String.class, id));
+                    Set<String> permissions = new HashSet<>(jdbc.queryForList("select distinct p.code from sys_permission p join sys_role_permission rp on rp.permission_id=p.id join sys_user_role ur on ur.role_id=rp.role_id join sys_role r on r.id=ur.role_id where ur.user_id=? and r.deleted=0 and r.enabled=1", String.class, id));
                     return new CurrentUser(rs.getLong("id"), rs.getString("username"), rs.getString("display_name"), rs.getLong("department_id"), roles, permissions);
                 }, id);
         if (rows.isEmpty()) throw new BusinessException(HttpStatus.UNAUTHORIZED, "账号不可用");

@@ -61,7 +61,7 @@ public class DataScopeService {
     }
 
     private Scope effectiveScope(Long userId) {
-        return jdbc.queryForList("select r.data_scope from sys_role r join sys_user_role ur on ur.role_id=r.id where ur.user_id=? and r.deleted=0", String.class, userId)
+        return jdbc.queryForList("select r.data_scope from sys_role r join sys_user_role ur on ur.role_id=r.id where ur.user_id=? and r.deleted=0 and r.enabled=1", String.class, userId)
                 .stream().map(Scope::valueOf).max(Comparator.comparingInt(Scope::rank)).orElse(Scope.SELF);
     }
 

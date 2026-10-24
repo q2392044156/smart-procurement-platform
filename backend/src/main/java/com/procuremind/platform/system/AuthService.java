@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.Map;
 import java.time.Duration;
+import org.springframework.data.redis.core.ScanOptions;
 
 @Service
 public class AuthService {
@@ -42,6 +43,14 @@ public class AuthService {
     }
     public void logout(String refreshToken) {
         try { redis.delete("refresh:" + jwt.parse(refreshToken).getId()); } catch (Exception ignored) {}
+    }
+    public void revokeUserSessions(Long userId) {
+        try (var cursor = redis.scan(ScanOptions.scanOptions().match("refresh:*").count(100).build())) {
+            while (cursor.hasNext()) {
+                String key = cursor.next();
+                if (userId.toString().equals(redis.opsForValue().get(key))) redis.delete(key);
+            }
+        }
     }
     private TokenPair issue(CurrentUser user) {
         String access = jwt.accessToken(user), refresh = jwt.refreshToken(user);
