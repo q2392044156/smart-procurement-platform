@@ -45,6 +45,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-procuremind123}
       REDIS_HOST: redis
       MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-http://localhost:9000}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-procuremind}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-procuremind123}
       JWT_SECRET: ${JWT_SECRET:-procuremind-demo-secret-at-least-32-bytes-long-change-me}

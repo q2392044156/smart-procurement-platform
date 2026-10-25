@@ -39,7 +39,11 @@ test('管理员可使用补齐后的主数据、供应商档案和系统视图',
 
   await page.getByRole('menuitem', { name: '供应商管理' }).click()
   await page.getByRole('button', { name: '档案' }).first().click()
+  await expect(page.getByRole('heading', { name: '联系人' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '资质证照' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '新增资质' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '绩效评价' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '新增评价' })).toBeVisible()
   await page.keyboard.press('Escape')
 
   await page.getByRole('menuitem', { name: '系统与审计' }).click()
@@ -71,4 +75,19 @@ test('审计员可进入操作审计但看不到系统管理数据', async ({ pa
   await page.getByRole('menuitem', { name: '系统与审计' }).click()
   await expect(page.getByRole('tab', { name: '操作审计' })).toBeVisible()
   await expect(page.getByRole('tab', { name: '用户' })).toHaveCount(0)
+})
+
+test('供应商管理员拥有供应商全生命周期操作但不能进入系统管理', async ({ page }) => {
+  await page.goto('/login')
+  await page.getByLabel('账号').fill('supplieradmin')
+  await page.getByLabel('密码').fill('Supplier@123')
+  await page.getByRole('button', { name: '登录平台' }).click()
+  await expect(page.getByRole('menuitem', { name: '供应商管理' })).toBeVisible()
+  await expect(page.getByRole('menuitem', { name: '系统与审计' })).toHaveCount(0)
+  await page.getByRole('menuitem', { name: '供应商管理' }).click()
+  await expect(page.getByRole('button', { name: '新增供应商' })).toBeVisible()
+  await page.getByRole('button', { name: '档案' }).first().click()
+  await expect(page.getByRole('button', { name: '新增联系人' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '新增资质' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '新增评价' })).toBeVisible()
 })
