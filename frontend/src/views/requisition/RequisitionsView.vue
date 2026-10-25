@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import WorkflowTimeline from '@/components/WorkflowTimeline.vue'
+import BusinessAttachments from '@/components/BusinessAttachments.vue'
 import type { Dict } from '@/types'
 
 const auth = useAuthStore()
@@ -89,6 +90,22 @@ async function submit(row: Dict) {
   await load()
 }
 
+async function cancel(row: Dict) {
+  const { value } = await ElMessageBox.prompt(`请输入取消申请 ${row.requisitionNo} 的原因`, '取消申请', { inputPattern: /\S+/, inputErrorMessage: '取消原因不能为空', type: 'warning' })
+  await http.patch(`/requisitions/${row.id}/cancel`, { reason: value })
+  ElMessage.success('采购申请已取消')
+  detailVisible.value = false
+  await load()
+}
+
+async function remove(row: Dict) {
+  await ElMessageBox.confirm(`确认删除申请 ${row.requisitionNo}？删除后列表中将不再显示。`, '删除确认', { type: 'warning' })
+  await http.delete(`/requisitions/${row.id}`)
+  ElMessage.success('采购申请已删除')
+  detailVisible.value = false
+  await load()
+}
+
 async function openConvert(row: Dict) {
   const data: Dict = await http.get(`/requisitions/${row.id}`)
   detail.value = data
@@ -110,6 +127,7 @@ async function doConvert() {
 }
 
 function isOwner(row: Dict) { return row.applicantId === auth.user?.id }
+function canManage(row: Dict) { return isOwner(row) || !!auth.user?.roles.includes('ADMIN') }
 function addItem() { form.items.push(emptyItem()) }
 onMounted(load)
 </script>
@@ -130,12 +148,14 @@ onMounted(load)
         <el-table-column prop="requiredDate" label="需求日期" width="120" />
         <el-table-column label="预算金额" width="130"><template #default="s">¥ {{ Number(s.row.budgetAmount).toLocaleString() }}</template></el-table-column>
         <el-table-column label="状态" width="100"><template #default="s"><el-tag :type="statusType[s.row.status]">{{ statusName[s.row.status] }}</el-tag></template></el-table-column>
-        <el-table-column label="操作" width="250" fixed="right">
+        <el-table-column label="操作" width="340" fixed="right">
           <template #default="s">
             <el-button link @click="openDetail(s.row)">详情</el-button>
             <el-button v-if="['DRAFT','REJECTED'].includes(s.row.status) && isOwner(s.row)" link type="primary" @click="openEdit(s.row)">编辑</el-button>
             <el-button v-if="['DRAFT','REJECTED'].includes(s.row.status) && auth.can('requisition:submit') && isOwner(s.row)" link type="primary" @click="submit(s.row)">提交</el-button>
             <el-button v-if="s.row.status === 'APPROVED' && auth.can('purchaseorder:edit')" link type="success" @click="openConvert(s.row)">转订单</el-button>
+            <el-button v-if="['DRAFT','REJECTED','PENDING_APPROVAL','APPROVED'].includes(s.row.status) && auth.can('requisition:cancel') && canManage(s.row)" link type="warning" @click="cancel(s.row)">取消</el-button>
+            <el-button v-if="['DRAFT','CANCELLED'].includes(s.row.status) && auth.can('requisition:delete') && canManage(s.row)" link type="danger" @click="remove(s.row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -169,6 +189,7 @@ onMounted(load)
           <el-descriptions-item label="预算金额">¥ {{ Number(detail.budgetAmount).toLocaleString() }}</el-descriptions-item>
           <el-descriptions-item label="用途" :span="2">{{ detail.purpose }}</el-descriptions-item>
           <el-descriptions-item v-if="detail.rejectionReason" label="驳回原因" :span="2"><span class="danger-text">{{ detail.rejectionReason }}</span></el-descriptions-item>
+          <el-descriptions-item v-if="detail.cancellationReason" label="取消原因" :span="2"><span class="danger-text">{{ detail.cancellationReason }}</span></el-descriptions-item>
         </el-descriptions>
         <h3 class="section-title">采购明细</h3>
         <el-table :data="detail.items" border>
@@ -178,6 +199,7 @@ onMounted(load)
           <el-table-column prop="estimatedUnitPrice" label="预估单价" width="120" />
           <el-table-column prop="remark" label="备注" />
         </el-table>
+        <BusinessAttachments business-type="REQUISITION" :business-id="detail.id" :editable="['DRAFT','REJECTED'].includes(detail.status) && canManage(detail)" />
         <WorkflowTimeline business-type="REQUISITION" :business-id="detail.id" />
       </template>
     </el-drawer>

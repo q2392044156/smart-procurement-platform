@@ -1,5 +1,44 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';import http from '@/api/http';import type { Dict } from '@/types'
-const balances=ref<Dict[]>([]),ledger=ref<Dict[]>([]),receipts=ref<Dict[]>([]),tab=ref('balance');async function load(){[balances.value,ledger.value,receipts.value]=await Promise.all([http.get('/inventory/balances'),http.get('/inventory/ledger'),http.get('/receipts')])}onMounted(load)
+import { onMounted, ref } from 'vue'
+import http from '@/api/http'
+import type { Dict } from '@/types'
+
+const balances=ref<Dict[]>([]),ledger=ref<Dict[]>([]),receipts=ref<Dict[]>([]),tab=ref('balance')
+const detail=ref<Dict>(),drawer=ref(false)
+async function load(){[balances.value,ledger.value,receipts.value]=await Promise.all([http.get('/inventory/balances'),http.get('/inventory/ledger'),http.get('/receipts')])}
+async function openReceipt(row:Dict){detail.value=await http.get(`/receipts/${row.id}`);drawer.value=true}
+function serialText(value:unknown){if(!value)return '—';if(Array.isArray(value))return value.join('、');try{return JSON.parse(String(value)).join('、')}catch{return String(value)}}
+onMounted(load)
 </script>
-<template><div class="page"><div class="page-head"><div><h1>收货与库存</h1><p>数量、批次、序列号库存及完整出入库流水</p></div><el-button @click="load">刷新</el-button></div><div class="panel panel-pad"><el-tabs v-model="tab"><el-tab-pane label="库存余额" name="balance"><el-table :data="balances"><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="materialCode" label="物资编码"/><el-table-column prop="materialName" label="物资名称"/><el-table-column prop="trackingMode" label="跟踪方式"/><el-table-column prop="quantity" label="当前库存"/><el-table-column prop="minStock" label="安全库存"/><el-table-column label="状态"><template #default="s"><el-tag :type="s.row.lowStock?'danger':'success'">{{s.row.lowStock?'库存偏低':'正常'}}</el-tag></template></el-table-column></el-table></el-tab-pane><el-tab-pane label="库存流水" name="ledger"><el-table :data="ledger"><el-table-column prop="createdAt" label="时间" width="180"/><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="materialName" label="物资"/><el-table-column prop="businessType" label="业务类型"/><el-table-column prop="direction" label="方向"/><el-table-column prop="quantity" label="变动数量"/><el-table-column prop="balanceAfter" label="结存"/><el-table-column prop="batchNo" label="批次"/></el-table></el-tab-pane><el-tab-pane label="收货记录" name="receipt"><el-table :data="receipts"><el-table-column prop="receiptNo" label="收货单号"/><el-table-column prop="orderNo" label="订单号"/><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="receiver" label="收货人"/><el-table-column prop="receiptDate" label="收货时间"/><el-table-column prop="remark" label="备注"/></el-table></el-tab-pane></el-tabs></div></div></template>
+
+<template>
+  <div class="page">
+    <div class="page-head"><div><h1>收货与库存</h1><p>数量、批次、序列号库存及完整出入库流水</p></div><el-button @click="load">刷新</el-button></div>
+    <div class="panel panel-pad">
+      <el-tabs v-model="tab">
+        <el-tab-pane label="库存余额" name="balance">
+          <el-table :data="balances"><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="materialCode" label="物资编码"/><el-table-column prop="materialName" label="物资名称"/><el-table-column prop="trackingMode" label="跟踪方式"/><el-table-column prop="quantity" label="当前库存"/><el-table-column prop="minStock" label="安全库存"/><el-table-column label="状态"><template #default="s"><el-tag :type="s.row.lowStock?'danger':'success'">{{s.row.lowStock?'库存偏低':'正常'}}</el-tag></template></el-table-column></el-table>
+        </el-tab-pane>
+        <el-tab-pane label="库存流水" name="ledger">
+          <el-table :data="ledger"><el-table-column prop="createdAt" label="时间" width="180"/><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="materialName" label="物资"/><el-table-column prop="businessType" label="业务类型"/><el-table-column prop="direction" label="方向"/><el-table-column prop="quantity" label="变动数量"/><el-table-column prop="balanceAfter" label="结存"/><el-table-column prop="batchNo" label="批次"/></el-table>
+        </el-tab-pane>
+        <el-tab-pane label="收货记录" name="receipt">
+          <el-table :data="receipts"><el-table-column prop="receiptNo" label="收货单号" width="180"/><el-table-column prop="orderNo" label="订单号" width="180"/><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="receiver" label="收货人"/><el-table-column prop="receiptDate" label="收货时间" width="170"/><el-table-column prop="itemCount" label="明细数" width="80"/><el-table-column prop="remark" label="备注"/><el-table-column label="操作" width="80"><template #default="s"><el-button link type="primary" @click="openReceipt(s.row)">详情</el-button></template></el-table-column></el-table>
+        </el-tab-pane>
+      </el-tabs>
+    </div>
+    <el-drawer v-model="drawer" title="收货单详情" size="720px">
+      <template v-if="detail">
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="收货单号">{{detail.receiptNo}}</el-descriptions-item><el-descriptions-item label="订单号">{{detail.orderNo}}</el-descriptions-item>
+          <el-descriptions-item label="仓库">{{detail.warehouse}}</el-descriptions-item><el-descriptions-item label="收货人">{{detail.receiver}}</el-descriptions-item>
+          <el-descriptions-item label="收货时间">{{detail.receiptDate}}</el-descriptions-item><el-descriptions-item label="备注">{{detail.remark||'—'}}</el-descriptions-item>
+        </el-descriptions>
+        <h3 class="section-title">收货明细</h3>
+        <el-table :data="detail.items" border><el-table-column prop="materialCode" label="物资编码"/><el-table-column prop="materialName" label="物资名称"/><el-table-column prop="trackingMode" label="跟踪" width="90"/><el-table-column prop="quantity" label="数量" width="90"/><el-table-column prop="batchNo" label="批次号"/><el-table-column label="序列号" min-width="180"><template #default="s">{{serialText(s.row.serialNumbers)}}</template></el-table-column></el-table>
+      </template>
+    </el-drawer>
+  </div>
+</template>
+
+<style scoped>.section-title{font-size:16px;margin:24px 0 12px}</style>

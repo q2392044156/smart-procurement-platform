@@ -12,5 +12,9 @@ public class PurchaseOrderController {
     @GetMapping("/purchase-orders") public ApiResponse<List<Map<String,Object>>> list(){return ApiResponse.ok(service.list());}
     @GetMapping("/purchase-orders/{id}") public ApiResponse<Map<String,Object>> detail(@PathVariable Long id){return ApiResponse.ok(service.detail(id));}
     @PostMapping("/requisitions/{id}/convert") @PreAuthorize("hasAuthority('purchaseorder:edit')") public ApiResponse<Map<String,Object>> convert(@PathVariable Long id,@Valid @RequestBody PurchaseOrderService.Request r){return ApiResponse.ok(Map.of("id",service.convert(id,r)));}
+    @PutMapping("/purchase-orders/{id}") @PreAuthorize("hasAnyAuthority('purchaseorder:edit','purchaseorder:update')") public ApiResponse<Void> update(@PathVariable Long id,@Valid @RequestBody PurchaseOrderService.UpdateRequest r){service.update(id,r);return ApiResponse.ok(null);}
     @PostMapping("/purchase-orders/{id}/submit") @PreAuthorize("hasAuthority('purchaseorder:edit')") public ApiResponse<Void> submit(@PathVariable Long id){service.submit(id);return ApiResponse.ok(null);}
+    @PatchMapping("/purchase-orders/{id}/cancel") @PreAuthorize("hasAnyAuthority('purchaseorder:edit','purchaseorder:cancel')") public ApiResponse<Void> cancel(@PathVariable Long id,@Valid @RequestBody PurchaseOrderService.ReasonRequest r){service.cancel(id,r);return ApiResponse.ok("订单已取消",null);}
+    @PatchMapping("/purchase-orders/{id}/close") @PreAuthorize("hasAnyAuthority('purchaseorder:edit','purchaseorder:close')") public ApiResponse<Void> close(@PathVariable Long id){service.close(id);return ApiResponse.ok("订单已关闭",null);}
+    @DeleteMapping("/purchase-orders/{id}") @PreAuthorize("hasAnyAuthority('purchaseorder:edit','purchaseorder:delete')") public ApiResponse<Void> delete(@PathVariable Long id){service.delete(id);return ApiResponse.ok(null);}
 }

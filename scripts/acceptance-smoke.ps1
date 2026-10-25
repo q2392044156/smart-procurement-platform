@@ -225,6 +225,11 @@ $balanceAfter = @(Get-Data "/inventory/balances" $tokens.warehouse | Where-Objec
 Assert-True ([decimal]$balanceAfter.quantity -eq ($beforeQuantity + 4)) "库存余额与两次收货数量不一致"
 $receipts = @(Get-Data "/receipts" $tokens.warehouse | Where-Object { $_.orderNo -eq $order.orderNo })
 Assert-True ($receipts.Count -eq 2) "幂等重放后收货单数量不是2"
+$receiptDetail = Get-Data "/receipts/$($receipts[0].id)" $tokens.warehouse
+Assert-True (@($receiptDetail.items).Count -eq 1) "收货单详情未返回收货明细"
+Send-Data "Patch" "/purchase-orders/$orderId/close" $tokens.purchaser | Out-Null
+$closedOrder = Get-Data "/purchase-orders/$orderId" $tokens.purchaser
+Assert-True ($closedOrder.status -eq "CLOSED") "已全部收货订单未能正常关闭"
 
 # 批次物资必须填写批次号；合法批次收货后正常入账。
 $batchOrder = New-Approved-Order $batchMaterial 2 100 "批次跟踪验收"
@@ -265,7 +270,7 @@ Assert-True ($serialSecond.orderStatus -eq "RECEIVED") "重复序列号回滚后
     resubmissionProcessInstances = $instanceCount
     purchaseOrderId = $orderId
     receiptCount = $receipts.Count
-    finalOrderStatus = $secondReceipt.orderStatus
+    finalOrderStatus = $closedOrder.status
     inventoryIncrease = "4"
     batchValidation = "PASS"
     serialValidation = "PASS"

@@ -17,4 +17,10 @@ class ArchitectureTest {
     static final ArchRule inventoryDoesNotReachRequisitionInternals = noClasses()
             .that().resideInAPackage("..inventory..")
             .should().dependOnClassesThat().resideInAPackage("..requisition..");
+
+    @ArchTest
+    static final ArchRule controllersDoNotExecuteSql = noClasses()
+            .that().haveSimpleNameEndingWith("Controller")
+            .and().resideOutsideOfPackage("..agentintegration..")
+            .should().dependOnClassesThat().haveFullyQualifiedName("org.springframework.jdbc.core.JdbcTemplate");
 }
