@@ -2,11 +2,11 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { DataAnalysis, Box, OfficeBuilding, Document, Stamp, ShoppingCart, Tickets, MagicStick, Setting, Fold, Expand } from '@element-plus/icons-vue'
+import { DataAnalysis, Box, Collection, OfficeBuilding, Document, Stamp, ShoppingCart, Tickets, MagicStick, Setting, Fold, Expand } from '@element-plus/icons-vue'
 
 const auth=useAuthStore(),route=useRoute(),router=useRouter(),collapsed=ref(false)
 const menus=[
-  ['/dashboard','经营看板','dashboard:view',DataAnalysis],['/materials','物资主数据','masterdata:view',Box],['/suppliers','供应商管理','supplier:view',OfficeBuilding],
+  ['/dashboard','经营看板','dashboard:view',DataAnalysis],['/materials','物资主数据','masterdata:view',Box],['/base-data','基础资料','masterdata:view',Collection],['/suppliers','供应商管理','supplier:view',OfficeBuilding],
   ['/requisitions','采购申请','requisition:view',Document],['/workflow','审批中心','workflow:approve',Stamp],['/orders','采购订单','purchaseorder:view',ShoppingCart],
   ['/inventory','收货与库存','inventory:view',Tickets],['/assistant','AI采购助手','agent:use',MagicStick],['/system','系统与审计',['system:user:view','audit:view'],Setting]
 ] as const

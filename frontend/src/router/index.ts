@@ -6,6 +6,7 @@ const routes = [
   { path:'/', component:()=>import('@/layouts/AppLayout.vue'), redirect:'/dashboard', children:[
     { path:'dashboard', component:()=>import('@/views/dashboard/DashboardView.vue'), meta:{title:'经营看板',permission:'dashboard:view'} },
     { path:'materials', component:()=>import('@/views/masterdata/MaterialsView.vue'), meta:{title:'物资主数据',permission:'masterdata:view'} },
+    { path:'base-data', component:()=>import('@/views/masterdata/BaseDataView.vue'), meta:{title:'基础资料',permission:'masterdata:view'} },
     { path:'suppliers', component:()=>import('@/views/supplier/SuppliersView.vue'), meta:{title:'供应商管理',permission:'supplier:view'} },
     { path:'requisitions', component:()=>import('@/views/requisition/RequisitionsView.vue'), meta:{title:'采购申请',permission:'requisition:view'} },
     { path:'workflow', component:()=>import('@/views/workflow/TasksView.vue'), meta:{title:'审批中心',permission:'workflow:approve'} },

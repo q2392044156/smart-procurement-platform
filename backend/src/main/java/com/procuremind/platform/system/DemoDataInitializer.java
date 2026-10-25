@@ -21,6 +21,7 @@ public class DemoDataInitializer implements ApplicationRunner {
                 new UserSeed("gm","总经理","HQ","GENERAL_MANAGER","Gm@123"), new UserSeed("auditor","内审专员","HQ","AUDITOR","Audit@123"),
                 new UserSeed("quality","质量部门经理","QA","QUALITY_MANAGER","Quality@123"),
                 new UserSeed("quality.requester","质量部申请人","QA","APPLICANT","QualityReq@123"),
+                new UserSeed("masterdata","主数据管理员","PROC","MASTER_DATA_ADMIN","MasterData@123"),
                 new UserSeed("viewer","采购只读观察员","PROC","PROCUREMENT_VIEWER","Viewer@123"));
         for (UserSeed u:users) {
             if (jdbc.queryForObject("select count(*) from sys_user where username=?", Long.class, u.username) > 0) continue;

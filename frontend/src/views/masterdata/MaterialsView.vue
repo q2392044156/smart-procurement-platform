@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import type { Dict } from '@/types'
@@ -14,6 +14,9 @@ const keyword = ref('')
 const tab = ref('materials')
 const materialDialog = ref(false)
 const categoryDialog = ref(false)
+const editingMaterialId = ref('')
+const editingCategoryId = ref('')
+const loadingMaterial = ref(false)
 const form = reactive<Dict>({ code: '', name: '', categoryId: '', unitId: '1', brandId: null, specification: '', trackingMode: 'QUANTITY', minStock: 0, attributes: {} })
 const categoryForm = reactive<Dict>({ parentId: null, code: '', name: '', description: '', sortOrder: 0, attributes: [] })
 const selectedCategory = computed(() => categories.value.find(x => x.id === String(form.categoryId)))
@@ -39,8 +42,12 @@ async function load() {
   ])
 }
 
-function openMaterial() {
-  Object.assign(form, { code: '', name: '', categoryId: '', unitId: units.value[0]?.id || '', brandId: null, specification: '', trackingMode: 'QUANTITY', minStock: 0, attributes: {} })
+async function openMaterial(row?: Dict) {
+  editingMaterialId.value = row?.id || ''
+  loadingMaterial.value = true
+  Object.assign(form, row ? { code: row.code, name: row.name, categoryId: row.categoryId, unitId: row.unitId, brandId: row.brandId || null, specification: row.specification || '', trackingMode: row.trackingMode, minStock: Number(row.minStock), attributes: typeof row.attributes === 'string' ? JSON.parse(row.attributes || '{}') : { ...(row.attributes || {}) } } : { code: '', name: '', categoryId: '', unitId: units.value.find(x => x.enabled)?.id || '', brandId: null, specification: '', trackingMode: 'QUANTITY', minStock: 0, attributes: {} })
+  await nextTick()
+  loadingMaterial.value = false
   materialDialog.value = true
 }
 
@@ -49,14 +56,16 @@ async function saveMaterial() {
     ElMessage.warning('请完整填写物资编码、名称、分类和单位')
     return
   }
-  await http.post('/materials', form)
-  ElMessage.success('物资已创建')
+  if (editingMaterialId.value) await http.put(`/materials/${editingMaterialId.value}`, form)
+  else await http.post('/materials', form)
+  ElMessage.success(editingMaterialId.value ? '物资已更新' : '物资已创建')
   materialDialog.value = false
   await load()
 }
 
-function openCategory() {
-  Object.assign(categoryForm, { parentId: null, code: '', name: '', description: '', sortOrder: 0, attributes: [] })
+function openCategory(row?: Dict) {
+  editingCategoryId.value = row?.id || ''
+  Object.assign(categoryForm, row ? { parentId: row.parentId || null, code: row.code, name: row.name, description: row.description || '', sortOrder: row.sortOrder || 0, attributes: (row.attributes || []).map((item: Dict) => ({ ...item, optionsText: typeof item.options === 'string' ? JSON.parse(item.options || '[]').join('，') : (item.options || []).join('，') })) } : { parentId: null, code: '', name: '', description: '', sortOrder: 0, attributes: [] })
   categoryDialog.value = true
 }
 
@@ -76,9 +85,31 @@ async function saveCategory() {
       options: item.valueType === 'ENUM' ? String(item.optionsText || '').split(/[,，]/).map(x => x.trim()).filter(Boolean) : null
     }))
   }
-  await http.post('/material-categories', payload)
-  ElMessage.success('物资分类已创建')
+  if (editingCategoryId.value) await http.put(`/material-categories/${editingCategoryId.value}`, payload)
+  else await http.post('/material-categories', payload)
+  ElMessage.success(editingCategoryId.value ? '物资分类已更新' : '物资分类已创建')
   categoryDialog.value = false
+  await load()
+}
+
+async function toggleMaterial(row: Dict) {
+  await ElMessageBox.confirm(`确认${row.enabled ? '停用' : '启用'}物资“${row.name}”吗？`, '物资状态', { type: 'warning' })
+  await http.patch(`/materials/${row.id}/status`, { enabled: !row.enabled })
+  ElMessage.success('物资状态已更新')
+  await load()
+}
+
+async function removeMaterial(row: Dict) {
+  await ElMessageBox.confirm(`确认删除物资“${row.name}”吗？已有业务记录的物资将被后端拒绝删除。`, '删除物资', { type: 'warning' })
+  await http.delete(`/materials/${row.id}`)
+  ElMessage.success('物资已删除')
+  await load()
+}
+
+async function removeCategory(row: Dict) {
+  await ElMessageBox.confirm(`确认删除分类“${row.name}”吗？`, '删除分类', { type: 'warning' })
+  await http.delete(`/material-categories/${row.id}`)
+  ElMessage.success('物资分类已删除')
   await load()
 }
 
@@ -86,7 +117,7 @@ function attributeSummary(row: Dict) {
   return (row.attributes || []).map((item: Dict) => `${item.name}·${item.valueType}${item.required ? '·必填' : ''}`).join('；') || '—'
 }
 
-watch(() => form.categoryId, () => { form.attributes = {} })
+watch(() => form.categoryId, () => { if (!loadingMaterial.value) form.attributes = {} })
 onMounted(load)
 </script>
 
@@ -94,7 +125,7 @@ onMounted(load)
   <div class="page">
     <div class="page-head">
       <div><h1>物资主数据</h1><p>统一管理IT设备、MRO备件与工厂设备</p></div>
-      <div v-if="auth.can('masterdata:edit')" class="actions"><el-button @click="openCategory">新增分类</el-button><el-button type="primary" @click="openMaterial">新增物资</el-button></div>
+      <div class="actions"><el-button v-if="auth.can('masterdata:category:edit') || auth.can('masterdata:edit')" @click="openCategory()">新增分类</el-button><el-button v-if="auth.can('masterdata:material:edit') || auth.can('masterdata:edit')" type="primary" @click="openMaterial()">新增物资</el-button></div>
     </div>
     <div class="panel panel-pad">
       <el-tabs v-model="tab">
@@ -108,6 +139,8 @@ onMounted(load)
             <el-table-column prop="specification" label="规格" min-width="200" />
             <el-table-column label="跟踪方式" width="110"><template #default="s"><el-tag :type="trackingType[s.row.trackingMode]">{{ trackingName[s.row.trackingMode] }}</el-tag></template></el-table-column>
             <el-table-column prop="minStock" label="安全库存" width="100" />
+            <el-table-column label="状态" width="80"><template #default="s"><el-tag :type="s.row.enabled ? 'success' : 'danger'">{{ s.row.enabled ? '启用' : '停用' }}</el-tag></template></el-table-column>
+            <el-table-column v-if="auth.can('masterdata:material:edit') || auth.can('masterdata:edit')" label="操作" width="190" fixed="right"><template #default="s"><el-button link type="primary" @click="openMaterial(s.row)">编辑</el-button><el-button link :type="s.row.enabled ? 'warning' : 'success'" @click="toggleMaterial(s.row)">{{ s.row.enabled ? '停用' : '启用' }}</el-button><el-button link type="danger" @click="removeMaterial(s.row)">删除</el-button></template></el-table-column>
           </el-table>
         </el-tab-pane>
         <el-tab-pane label="分类与动态属性" name="categories">
@@ -117,19 +150,21 @@ onMounted(load)
             <el-table-column prop="description" label="说明" min-width="180" />
             <el-table-column label="动态属性" min-width="320"><template #default="s">{{ attributeSummary(s.row) }}</template></el-table-column>
             <el-table-column prop="sortOrder" label="排序" width="80" />
+            <el-table-column prop="materialCount" label="物资数" width="80" />
+            <el-table-column v-if="auth.can('masterdata:category:edit') || auth.can('masterdata:edit')" label="操作" width="130"><template #default="s"><el-button link type="primary" @click="openCategory(s.row)">编辑</el-button><el-button link type="danger" @click="removeCategory(s.row)">删除</el-button></template></el-table-column>
           </el-table>
         </el-tab-pane>
       </el-tabs>
     </div>
 
-    <el-dialog v-model="materialDialog" title="新增物资" width="700px">
+    <el-dialog v-model="materialDialog" :title="editingMaterialId ? '编辑物资' : '新增物资'" width="700px">
       <el-form :model="form" label-width="110px">
         <div class="grid">
-          <el-form-item label="物资编码" required><el-input v-model="form.code" /></el-form-item>
+          <el-form-item label="物资编码" required><el-input v-model="form.code" :disabled="!!editingMaterialId" /></el-form-item>
           <el-form-item label="物资名称" required><el-input v-model="form.name" /></el-form-item>
           <el-form-item label="分类" required><el-select v-model="form.categoryId" filterable style="width:100%"><el-option v-for="item in categories" :key="item.id" :label="`${item.code} ${item.name}`" :value="item.id" /></el-select></el-form-item>
-          <el-form-item label="计量单位" required><el-select v-model="form.unitId" style="width:100%"><el-option v-for="item in units" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item>
-          <el-form-item label="品牌"><el-select v-model="form.brandId" clearable style="width:100%"><el-option v-for="item in brands" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item>
+          <el-form-item label="计量单位" required><el-select v-model="form.unitId" style="width:100%"><el-option v-for="item in units.filter(x=>x.enabled)" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item>
+          <el-form-item label="品牌"><el-select v-model="form.brandId" clearable style="width:100%"><el-option v-for="item in brands.filter(x=>x.enabled)" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item>
           <el-form-item label="库存跟踪"><el-select v-model="form.trackingMode" style="width:100%"><el-option v-for="(value,key) in trackingName" :key="key" :label="value" :value="key" /></el-select></el-form-item>
           <el-form-item label="规格型号"><el-input v-model="form.specification" /></el-form-item>
           <el-form-item label="安全库存"><el-input-number v-model="form.minStock" :min="0" style="width:100%" /></el-form-item>
@@ -145,10 +180,10 @@ onMounted(load)
       <template #footer><el-button @click="materialDialog=false">取消</el-button><el-button type="primary" @click="saveMaterial">保存</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="categoryDialog" title="新增物资分类" width="860px">
+    <el-dialog v-model="categoryDialog" :title="editingCategoryId ? '编辑物资分类' : '新增物资分类'" width="860px">
       <el-form :model="categoryForm" label-width="90px">
         <div class="grid">
-          <el-form-item label="上级分类"><el-select v-model="categoryForm.parentId" clearable style="width:100%"><el-option v-for="item in categories" :key="item.id" :label="`${item.code} ${item.name}`" :value="item.id" /></el-select></el-form-item>
+          <el-form-item label="上级分类"><el-select v-model="categoryForm.parentId" clearable style="width:100%"><el-option v-for="item in categories.filter(x=>x.id !== editingCategoryId)" :key="item.id" :label="`${item.code} ${item.name}`" :value="item.id" /></el-select></el-form-item>
           <el-form-item label="排序"><el-input-number v-model="categoryForm.sortOrder" :min="0" style="width:100%" /></el-form-item>
           <el-form-item label="分类编码" required><el-input v-model="categoryForm.code" /></el-form-item>
           <el-form-item label="分类名称" required><el-input v-model="categoryForm.name" /></el-form-item>

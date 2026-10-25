@@ -28,6 +28,15 @@ test('管理员可使用补齐后的主数据、供应商档案和系统视图',
   await expect(page.getByText('IT设备', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '新增分类' })).toBeVisible()
 
+  await page.getByRole('menuitem', { name: '基础资料' }).click()
+  await expect(page.getByRole('tab', { name: '仓库' })).toBeVisible()
+  await expect(page.getByText('质量检验仓', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '新增仓库' })).toBeVisible()
+  await page.getByRole('tab', { name: '计量单位' }).click()
+  await expect(page.getByText('千克', { exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: '品牌' }).click()
+  await expect(page.getByText('欧姆龙', { exact: true })).toBeVisible()
+
   await page.getByRole('menuitem', { name: '供应商管理' }).click()
   await page.getByRole('button', { name: '档案' }).first().click()
   await expect(page.getByRole('heading', { name: '资质证照' })).toBeVisible()
