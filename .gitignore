@@ -1,21 +1,56 @@
 # Environment and secrets
 .env
 .env.*
+**/.env
+**/.env.*
 !.env.example
+!**/.env.example
+*.pem
+*.key
+*.p12
+*.jks
 
 # Node / Vue
 node_modules/
+**/node_modules/
 dist/
+**/dist/
+coverage/
+**/coverage/
 *.tsbuildinfo
 test-results/
 playwright-report/
+.vite/
+.npm/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
 
-# Java
+# Java / Maven
 target/
+**/target/
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+*.class
 *.log
+hs_err_pid*
+
+# Runtime data and temporary files
+data/
+uploads/
+tmp/
+temp/
+*.tmp
+*.swp
+*.bak
 
 # IDE / OS
 .idea/
 .vscode/
+.project
+.classpath
+.settings/
+*.iml
 .DS_Store
 Thumbs.db
+Desktop.ini

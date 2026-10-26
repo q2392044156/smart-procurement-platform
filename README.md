@@ -1,6 +1,21 @@
 # ProcureMind 智能采购平台
 
-面向制造企业的采购与物资供应链平台。业务系统与 `procurement-agent-harness` 在源码和运行时上解耦；不启动 Agent 时，登录、审批、订单、收货、库存和看板均可独立运行。
+面向制造企业的采购与物资供应链全栈项目，覆盖“采购申请 → 多级审批 → 采购订单 → 分批收货 → 库存入账”的核心闭环，适合作为 Spring Boot + Vue 的企业级项目实践与面试演示。
+
+前后端业务系统与 `procurement-agent-harness` 在源码和运行时上解耦；不启动 Agent 时，登录、审批、订单、收货、库存和看板均可独立运行。项目地址：[q2392044156/smart-procurement-platform](https://github.com/q2392044156/smart-procurement-platform)。
+
+## 项目结构
+
+```text
+smart-procurement-platform/
+├── backend/                  # Spring Boot 模块化单体、Flyway、Flowable
+├── frontend/                 # Vue 3 管理端、Vitest、Playwright
+├── infra/                    # MinIO 等基础设施镜像配置
+├── scripts/                  # 演示数据与端到端业务验收脚本
+├── docs/                     # 架构边界和模块依赖说明
+├── compose.yml               # 本地一键启动编排
+└── .env.example              # 可复制的环境变量模板
+```
 
 ## 技术架构
 
@@ -11,10 +26,17 @@
 
 ## 完整启动与关闭
 
-前置条件：Docker Desktop 已启动，3000、8080、9000、9001 端口未被占用。首次运行：
+推荐使用 Docker Compose 一键启动。前置条件：
+
+- Git
+- Docker Desktop 及 Docker Compose v2
+- 本机 `3000`、`8080`、`9000`、`9001` 端口未被占用
+
+首次运行：
 
 ```powershell
-cd E:\project\my_project2\smart-procurement-platform
+git clone https://github.com/q2392044156/smart-procurement-platform.git
+cd smart-procurement-platform
 Copy-Item .env.example .env
 docker compose up -d --build
 docker compose ps
@@ -102,7 +124,7 @@ docker compose --profile agent up -d --build
 
 ## 本地开发
 
-先启动基础设施：`docker compose up -d mysql redis minio`，再分别打开两个终端：
+本地开发需要 JDK 21、Maven 3.9+、Node.js 20.19+ 和 npm 10+。先启动基础设施：`docker compose up -d mysql redis minio`，再分别打开两个终端：
 
 ```powershell
 cd backend
@@ -119,7 +141,41 @@ npm run dev
 
 开发模式关闭方式：在前后端两个终端中按 `Ctrl+C`，然后执行 `docker compose down` 关闭基础设施。
 
+## 配置说明
+
+本地首次启动应复制 `.env.example` 为 `.env`。`.env` 已被 Git 忽略，不应提交真实密钥。
+
+| 变量 | 用途 | 说明 |
+|---|---|---|
+| `DB_PASSWORD` | MySQL 业务账号密码 | 部署时必须修改 |
+| `MYSQL_ROOT_PASSWORD` | MySQL root 密码 | 部署时必须修改 |
+| `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | MinIO 凭据 | 部署时必须修改 |
+| `MINIO_PUBLIC_ENDPOINT` | 浏览器访问 MinIO 的地址 | 远程部署应使用 HTTPS 公网/内网域名 |
+| `JWT_SECRET` | JWT 签名密钥 | 至少 32 字节随机值 |
+| `AGENT_ENABLED` | 是否启用可选 Agent | 默认 `false` |
+| `AGENT_INTERNAL_TOKEN` | 平台与 Agent 的内部令牌 | 仅启用 Agent 时配置，至少 32 字节 |
+
+## API 约定
+
+- REST API 前缀：`/api/v1`
+- 统一响应：`{ code, message, data, requestId }`
+- Long 主键和金额以字符串形式传输，避免 JavaScript 精度丢失
+- 数据库存储 UTC 时间，前端按 `Asia/Shanghai` 展示
+- Swagger：<http://localhost:8080/swagger-ui.html>
+- OpenAPI JSON：<http://localhost:8080/v3/api-docs>
+
 ## 自动化验收
+
+提交代码前建议执行基础测试与构建：
+
+```powershell
+cd backend
+mvn test
+cd ..\frontend
+npm ci
+npm run test
+npm run build
+```
 
 默认服务健康后，可以执行可重复的端到端业务验收：
 
