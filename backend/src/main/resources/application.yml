@@ -37,15 +37,6 @@ flowable:
   async-executor-activate: false
   history-level: audit
 
-mybatis-plus:
-  configuration:
-    map-underscore-to-camel-case: true
-  global-config:
-    db-config:
-      logic-delete-field: deleted
-      logic-delete-value: 1
-      logic-not-delete-value: 0
-
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

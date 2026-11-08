@@ -20,6 +20,7 @@ coverage/
 *.tsbuildinfo
 test-results/
 playwright-report/
+.demo-override.yml
 .vite/
 .npm/
 npm-debug.log*
