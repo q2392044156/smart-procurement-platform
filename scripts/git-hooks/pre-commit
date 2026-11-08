@@ -1,0 +1,27 @@
+#!/bin/sh
+# 提交身份校验：作者与提交者必须是 WangQF <2392044156@qq.com>
+EXPECTED_NAME="WangQF"
+EXPECTED_EMAIL="2392044156@qq.com"
+
+author="$(git var GIT_AUTHOR_IDENT 2>/dev/null || true)"
+case "$author" in
+  "$EXPECTED_NAME <$EXPECTED_EMAIL>"*) ;;
+  *)
+    echo "ERROR: author identity must be $EXPECTED_NAME <$EXPECTED_EMAIL>" >&2
+    echo "       got: $author" >&2
+    echo "       fix: git config user.name \"$EXPECTED_NAME\" && git config user.email \"$EXPECTED_EMAIL\"" >&2
+    exit 1
+    ;;
+esac
+
+committer="$(git var GIT_COMMITTER_IDENT 2>/dev/null || true)"
+case "$committer" in
+  "$EXPECTED_NAME <$EXPECTED_EMAIL>"*) ;;
+  *)
+    echo "ERROR: committer identity must be $EXPECTED_NAME <$EXPECTED_EMAIL>" >&2
+    echo "       got: $committer" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

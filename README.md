@@ -337,6 +337,11 @@ npm run test:e2e
 - 新增模块（`knowledge`、`budget`、`contract`、`alerts`、`idempotency`、出库与契约层）按可读风格编写：一条语句一行、方法短、复杂 SQL 用文本块。
 - 早期模块存在压缩写法；统一按 `.editorconfig` 格式化，且**格式化单独提交**，避免与功能变更混在同一 diff 里。
 
+## 提交约定
+
+- 作者与提交者统一为 `WangQF <2392044156@qq.com>`。
+- 新克隆后执行 `.\scripts\install-git-hooks.ps1`：设置本地身份并启用 `scripts/git-hooks/pre-commit`，身份不符的提交会被直接拒绝。
+
 ## 当前边界与安全说明
 
 - 核心采购闭环和角色权限可独立演示，但它仍是面试展示型 MVP，不等同于生产级 ERP。询报价、合同、发票、三单匹配、质检、资产维保、消息通知和多租户不在首版范围。
