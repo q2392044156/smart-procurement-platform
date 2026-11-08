@@ -9,6 +9,8 @@ import type { Dict } from '@/types'
 
 const auth = useAuthStore()
 const rows = ref<Dict[]>([])
+const keyword = ref('')
+const page = reactive({ current: 1, size: 10, total: 0 })
 const materials = ref<Dict[]>([])
 const suppliers = ref<Dict[]>([])
 const editorVisible = ref(false)
@@ -30,10 +32,17 @@ const statusName: Dict = { DRAFT: '草稿', PENDING_APPROVAL: '审批中', APPRO
 const statusType: Dict = { DRAFT: 'info', PENDING_APPROVAL: 'warning', APPROVED: 'success', REJECTED: 'danger', CONVERTED: 'success' }
 
 async function load() {
-  ;[rows.value, materials.value, suppliers.value] = await Promise.all([
-    http.get('/requisitions'), http.get('/materials'), http.get('/suppliers')
+  const [pageData, materialRows, supplierRows] = await Promise.all([
+    http.get('/requisitions/page', { params: { keyword: keyword.value, current: page.current, size: page.size } }),
+    http.get('/materials'), http.get('/suppliers')
   ])
+  rows.value = pageData.records
+  page.total = Number(pageData.total)
+  materials.value = materialRows
+  suppliers.value = supplierRows
 }
+
+function search() { page.current = 1; load() }
 
 function resetForm() {
   Object.assign(form, { requiredDate: '', purpose: '', items: [emptyItem()] })
@@ -140,6 +149,7 @@ onMounted(load)
     </div>
 
     <div class="panel panel-pad">
+      <div class="toolbar"><el-input v-model="keyword" placeholder="申请单号或用途" clearable style="width:280px" @keyup.enter="search" /><el-button @click="search">查询</el-button></div>
       <el-table :data="rows">
         <el-table-column prop="requisitionNo" label="申请单号" width="170" />
         <el-table-column prop="department" label="部门" />
@@ -159,6 +169,7 @@ onMounted(load)
           </template>
         </el-table-column>
       </el-table>
+      <div class="pager"><el-pagination v-model:current-page="page.current" :page-size="page.size" :total="page.total" layout="total, prev, pager, next" background @current-change="load" /></div>
     </div>
 
     <el-dialog v-model="editorVisible" :title="editorTitle" width="900px" destroy-on-close>
@@ -225,5 +236,5 @@ onMounted(load)
 </template>
 
 <style scoped>
-.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}.section-title{font-size:16px;margin:24px 0 12px}.danger-text{color:#d94b4b}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}.section-title{font-size:16px;margin:24px 0 12px}.danger-text{color:#d94b4b}.pager{display:flex;justify-content:flex-end;margin-top:14px}.toolbar{display:flex;gap:10px;margin-bottom:14px}
 </style>

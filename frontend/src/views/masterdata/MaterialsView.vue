@@ -7,6 +7,7 @@ import type { Dict } from '@/types'
 
 const auth = useAuthStore()
 const rows = ref<Dict[]>([])
+const page = reactive({ current: 1, size: 10, total: 0 })
 const categories = ref<Dict[]>([])
 const units = ref<Dict[]>([])
 const brands = ref<Dict[]>([])
@@ -36,10 +37,15 @@ const categoryTree = computed(() => {
 })
 
 async function load() {
-  ;[rows.value, categories.value, units.value, brands.value] = await Promise.all([
-    http.get('/materials', { params: { keyword: keyword.value } }),
+  const [pageData, categoryRows, unitRows, brandRows] = await Promise.all([
+    http.get('/materials/page', { params: { keyword: keyword.value, current: page.current, size: page.size } }),
     http.get('/material-categories'), http.get('/units'), http.get('/brands')
   ])
+  rows.value = pageData.records
+  page.total = Number(pageData.total)
+  categories.value = categoryRows
+  units.value = unitRows
+  brands.value = brandRows
 }
 
 async function openMaterial(row?: Dict) {
@@ -142,6 +148,7 @@ onMounted(load)
             <el-table-column label="状态" width="80"><template #default="s"><el-tag :type="s.row.enabled ? 'success' : 'danger'">{{ s.row.enabled ? '启用' : '停用' }}</el-tag></template></el-table-column>
             <el-table-column v-if="auth.can('masterdata:material:edit') || auth.can('masterdata:edit')" label="操作" width="190" fixed="right"><template #default="s"><el-button link type="primary" @click="openMaterial(s.row)">编辑</el-button><el-button link :type="s.row.enabled ? 'warning' : 'success'" @click="toggleMaterial(s.row)">{{ s.row.enabled ? '停用' : '启用' }}</el-button><el-button link type="danger" @click="removeMaterial(s.row)">删除</el-button></template></el-table-column>
           </el-table>
+          <div class="pager"><el-pagination v-model:current-page="page.current" :page-size="page.size" :total="page.total" layout="total, prev, pager, next" background @current-change="load" /></div>
         </el-tab-pane>
         <el-tab-pane label="分类与动态属性" name="categories">
           <el-table :data="categoryTree" row-key="id" default-expand-all>
@@ -205,5 +212,5 @@ onMounted(load)
 </template>
 
 <style scoped>
-.actions{display:flex;gap:10px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}.full{grid-column:1/-1}.attribute-head{display:flex;justify-content:space-between;align-items:center;margin:10px 0}
+.actions{display:flex;gap:10px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}.full{grid-column:1/-1}.attribute-head{display:flex;justify-content:space-between;align-items:center;margin:10px 0}.pager{display:flex;justify-content:flex-end;margin-top:14px}
 </style>

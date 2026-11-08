@@ -7,6 +7,7 @@ import type { Dict } from '@/types'
 
 const auth = useAuthStore()
 const rows = ref<Dict[]>([])
+const page = reactive({ current: 1, size: 10, total: 0 })
 const keyword = ref('')
 const editorVisible = ref(false)
 const detailVisible = ref(false)
@@ -32,7 +33,11 @@ const canProfile = computed(() => auth.can('supplier:edit') || auth.can('supplie
 const canQualification = computed(() => auth.can('supplier:edit') || auth.can('supplier:qualification:edit'))
 const canEvaluation = computed(() => auth.can('supplier:edit') || auth.can('supplier:evaluation:edit'))
 
-async function load() { rows.value = await http.get('/suppliers', { params: { keyword: keyword.value } }) }
+async function load() {
+  const data: Dict = await http.get('/suppliers/page', { params: { keyword: keyword.value, current: page.current, size: page.size } })
+  rows.value = data.records
+  page.total = Number(data.total)
+}
 
 function resetForm() {
   editingId.value = undefined
@@ -185,6 +190,7 @@ onMounted(load)
         <el-table-column prop="qualificationCount" label="资质" width="70" />
         <el-table-column label="操作" width="270" fixed="right"><template #default="s"><el-button link @click="openDetail(s.row)">档案</el-button><template v-if="canProfile"><el-button link type="primary" @click="openEdit(s.row)">编辑</el-button><el-dropdown trigger="click" @command="handleStatusCommand(s.row,$event)"><el-button link type="warning">状态</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item v-for="(value,key) in statusName" :key="key" :command="key" :disabled="key===s.row.status">{{ value }}</el-dropdown-item></el-dropdown-menu></template></el-dropdown><el-button link type="danger" @click="removeSupplier(s.row)">删除</el-button></template></template></el-table-column>
       </el-table>
+      <div class="pager"><el-pagination v-model:current-page="page.current" :page-size="page.size" :total="page.total" layout="total, prev, pager, next" background @current-change="load" /></div>
     </div>
 
     <el-dialog v-model="editorVisible" :title="editorTitle" width="660px">
@@ -252,5 +258,5 @@ onMounted(load)
 </template>
 
 <style scoped>
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}.full{grid-column:1/-1}h3{font-size:16px;margin:0}.section-head{display:flex;justify-content:space-between;align-items:center;margin:24px 0 12px}.form-tip{font-size:12px;color:#8a94a6;line-height:1.5;margin-top:4px}.date-separator{margin:0 10px;color:#8a94a6}.current-file{display:block;margin-top:8px;color:#637083;font-size:12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}.full{grid-column:1/-1}h3{font-size:16px;margin:0}.section-head{display:flex;justify-content:space-between;align-items:center;margin:24px 0 12px}.form-tip{font-size:12px;color:#8a94a6;line-height:1.5;margin-top:4px}.date-separator{margin:0 10px;color:#8a94a6}.current-file{display:block;margin-top:8px;color:#637083;font-size:12px}.pager{display:flex;justify-content:flex-end;margin-top:14px}
 </style>

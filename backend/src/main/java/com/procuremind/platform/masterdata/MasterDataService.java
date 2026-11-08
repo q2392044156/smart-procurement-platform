@@ -93,6 +93,30 @@ public class MasterDataService {
                 """, like, like);
     }
 
+    public Map<String, Object> materialsPage(String keyword, int current, int size) {
+        int page = Math.max(current, 1);
+        int pageSize = Math.min(Math.max(size, 1), 100);
+        String like = "%" + (keyword == null ? "" : keyword.trim()) + "%";
+        Long total = jdbc.queryForObject("select count(*) from md_material m where m.deleted=0 and (m.code like ? or m.name like ?)", Long.class, like, like);
+        List<Map<String, Object>> records = jdbc.queryForList("""
+                select cast(m.id as char) id,m.code,m.name,cast(m.category_id as char) categoryId,c.name category,
+                       cast(m.unit_id as char) unitId,u.name unit,cast(m.brand_id as char) brandId,b.name brand,
+                       m.specification,m.tracking_mode trackingMode,m.min_stock minStock,m.attributes_json attributes,m.enabled
+                from md_material m join md_material_category c on c.id=m.category_id
+                join md_unit u on u.id=m.unit_id left join md_brand b on b.id=m.brand_id
+                where m.deleted=0 and (m.code like ? or m.name like ?)
+                order by m.id desc limit ? offset ?
+                """, like, like, pageSize, (page - 1) * pageSize);
+        long totalCount = total == null ? 0 : total;
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("records", records);
+        result.put("total", (int) totalCount);
+        result.put("current", page);
+        result.put("size", pageSize);
+        result.put("pages", (int) ((totalCount + pageSize - 1) / pageSize));
+        return result;
+    }
+
     public Map<String, Object> material(Long id) {
         return materials("").stream().filter(row -> id.toString().equals(row.get("id"))).findFirst()
                 .orElseThrow(() -> notFound("物资不存在"));

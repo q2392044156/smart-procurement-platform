@@ -26,7 +26,7 @@ public class DashboardService {
         data.put("orderStatus", jdbc.queryForList("select status name,count(*) value from po_purchase_order where deleted=0 group by status"));
         data.put("supplierRanking", jdbc.queryForList("select s.name,coalesce(sum(o.total_amount),0) amount,s.score from sp_supplier s left join po_purchase_order o on o.supplier_id=s.id and o.status not in ('DRAFT','REJECTED','CANCELLED') where s.deleted=0 group by s.id,s.name,s.score order by amount desc limit 5"));
         data.put("monthlyTrend", jdbc.queryForList("select date_format(created_at,'%Y-%m') month,sum(total_amount) amount from po_purchase_order where deleted=0 and created_at>=date_sub(utc_timestamp(),interval 12 month) and status not in ('DRAFT','REJECTED','CANCELLED') group by date_format(created_at,'%Y-%m') order by month"));
-        data.put("lowStockMaterials", jdbc.queryForList("select m.code,m.name,w.name warehouse,b.quantity,m.min_stock minStock from inv_balance b join md_material m on m.id=b.material_id join md_warehouse w on w.id=b.warehouse_id where b.deleted=0 and b.quantity<m.min_stock order by (m.min_stock-b.quantity) desc limit 10"));
+        data.put("lowStockMaterials", jdbc.queryForList("select m.code materialCode,m.name materialName,w.name warehouse,b.quantity,m.min_stock minStock from inv_balance b join md_material m on m.id=b.material_id join md_warehouse w on w.id=b.warehouse_id where b.deleted=0 and b.quantity<m.min_stock order by (m.min_stock-b.quantity) desc limit 10"));
         return data;
     }
 }

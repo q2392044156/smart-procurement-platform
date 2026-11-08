@@ -16,6 +16,7 @@ public class SupplierController {
     public SupplierController(SupplierService service){this.service=service;}
     @GetMapping public ApiResponse<List<Map<String,Object>>> list(@RequestParam(required=false) String keyword){return ApiResponse.ok(service.suppliers(keyword));}
     @GetMapping("/{id}") public ApiResponse<Map<String,Object>> get(@PathVariable Long id){return ApiResponse.ok(service.supplier(id));}
+    @GetMapping("/page") public ApiResponse<Map<String,Object>> page(@RequestParam(required=false) String keyword,@RequestParam(required=false) String status,@RequestParam(defaultValue="1") int current,@RequestParam(defaultValue="10") int size){return ApiResponse.ok(service.page(keyword,status,current,size));}
     @PostMapping @PreAuthorize("hasAnyAuthority('supplier:edit','supplier:profile:edit')") public ApiResponse<Map<String,Object>> create(@Valid @RequestBody SupplierService.SupplierRequest r){return ApiResponse.ok(Map.of("id",service.createSupplier(r)));}
     @PutMapping("/{id}") @PreAuthorize("hasAnyAuthority('supplier:edit','supplier:profile:edit')") public ApiResponse<Void> update(@PathVariable Long id,@Valid @RequestBody SupplierService.SupplierRequest r){service.updateSupplier(id,r);return ApiResponse.ok(null);}
     @PatchMapping("/{id}/status") @PreAuthorize("hasAnyAuthority('supplier:edit','supplier:profile:edit')") public ApiResponse<Void> status(@PathVariable Long id,@Valid @RequestBody SupplierService.SupplierStatusRequest r){service.setSupplierStatus(id,r.status());return ApiResponse.ok(null);}

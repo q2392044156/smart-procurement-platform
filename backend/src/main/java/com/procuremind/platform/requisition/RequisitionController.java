@@ -10,6 +10,7 @@ import java.util.List;import java.util.Map;
 public class RequisitionController {
     private final RequisitionService service;public RequisitionController(RequisitionService service){this.service=service;}
     @GetMapping public ApiResponse<List<Map<String,Object>>> list(){return ApiResponse.ok(service.list());}
+    @GetMapping("/page") public ApiResponse<Map<String,Object>> page(@RequestParam(required=false) String keyword,@RequestParam(required=false) String status,@RequestParam(defaultValue="1") int current,@RequestParam(defaultValue="10") int size){return ApiResponse.ok(service.page(keyword,status,current,size));}
     @GetMapping("/{id}") public ApiResponse<Map<String,Object>> detail(@PathVariable Long id){return ApiResponse.ok(service.detail(id));}
     @PostMapping @PreAuthorize("hasAuthority('requisition:create')") public ApiResponse<Map<String,Object>> create(@Valid @RequestBody RequisitionService.Request r){return ApiResponse.ok(Map.of("id",service.create(r)));}
     @PutMapping("/{id}") @PreAuthorize("hasAuthority('requisition:create')") public ApiResponse<Void> update(@PathVariable Long id,@Valid @RequestBody RequisitionService.Request r){service.update(id,r);return ApiResponse.ok(null);}

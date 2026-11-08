@@ -36,6 +36,27 @@ public class SupplierService {
             """,like,like);
     }
 
+    public Map<String,Object> page(String keyword,String status,int current,int size) {
+        int page=Math.max(current,1); int pageSize=Math.min(Math.max(size,1),100);
+        String like="%"+(keyword==null?"":keyword.trim())+"%";
+        String state=status==null||status.isBlank()?null:status.trim().toUpperCase();
+        String where="s.deleted=0 and (s.code like ? or s.name like ?) and (? is null or s.status=?)";
+        Long total=jdbc.queryForObject("select count(*) from sp_supplier s where "+where,Long.class,like,like,state,state);
+        List<Map<String,Object>> records=jdbc.queryForList("""
+                select cast(s.id as char) id,s.code,s.name,s.unified_credit_code unifiedCreditCode,s.level,s.status,
+                  s.contact_name contactName,s.contact_phone contactPhone,s.email,s.address,s.score,
+                  (select count(*) from sp_supplier_contact c where c.supplier_id=s.id and c.deleted=0) contactCount,
+                  (select count(*) from sp_supplier_qualification q where q.supplier_id=s.id and q.deleted=0) qualificationCount,
+                  (select count(*) from sp_supplier_evaluation e where e.supplier_id=s.id and e.deleted=0) evaluationCount,
+                  (select count(*) from sp_supplier_qualification q where q.supplier_id=s.id and q.deleted=0 and q.status<>'REVOKED' and q.valid_until is not null and q.valid_until<current_date) expiredQualificationCount,
+                  (select count(*) from po_purchase_order o where o.supplier_id=s.id and o.deleted=0) orderCount
+                from sp_supplier s where """+" "+where+" order by s.id desc limit ? offset ?",like,like,state,state,pageSize,(page-1)*pageSize);
+        long totalCount=total==null?0:total;
+        Map<String,Object> result=new java.util.LinkedHashMap<>();
+        result.put("records",records);result.put("total",(int)totalCount);result.put("current",page);result.put("size",pageSize);result.put("pages",(int)((totalCount+pageSize-1)/pageSize));
+        return result;
+    }
+
     public Map<String,Object> supplier(Long id) {
         Map<String,Object> data=supplierRow(id);
         data.put("contacts",contacts(id)); data.put("qualifications",qualifications(id)); data.put("evaluations",evaluations(id));

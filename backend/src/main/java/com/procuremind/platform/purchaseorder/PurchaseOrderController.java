@@ -11,6 +11,7 @@ public class PurchaseOrderController {
     private final PurchaseOrderService service;public PurchaseOrderController(PurchaseOrderService service){this.service=service;}
     @GetMapping("/purchase-orders") public ApiResponse<List<Map<String,Object>>> list(){return ApiResponse.ok(service.list());}
     @GetMapping("/purchase-orders/{id}") public ApiResponse<Map<String,Object>> detail(@PathVariable Long id){return ApiResponse.ok(service.detail(id));}
+    @GetMapping("/purchase-orders/page") public ApiResponse<Map<String,Object>> page(@RequestParam(required=false) String keyword,@RequestParam(required=false) String status,@RequestParam(defaultValue="1") int current,@RequestParam(defaultValue="10") int size){return ApiResponse.ok(service.page(keyword,status,current,size));}
     @PostMapping("/requisitions/{id}/convert") @PreAuthorize("hasAuthority('purchaseorder:edit')") public ApiResponse<Map<String,Object>> convert(@PathVariable Long id,@Valid @RequestBody PurchaseOrderService.Request r){return ApiResponse.ok(Map.of("id",service.convert(id,r)));}
     @PutMapping("/purchase-orders/{id}") @PreAuthorize("hasAnyAuthority('purchaseorder:edit','purchaseorder:update')") public ApiResponse<Void> update(@PathVariable Long id,@Valid @RequestBody PurchaseOrderService.UpdateRequest r){service.update(id,r);return ApiResponse.ok(null);}
     @PostMapping("/purchase-orders/{id}/submit") @PreAuthorize("hasAuthority('purchaseorder:edit')") public ApiResponse<Void> submit(@PathVariable Long id){service.submit(id);return ApiResponse.ok(null);}

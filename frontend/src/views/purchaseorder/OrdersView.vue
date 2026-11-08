@@ -9,6 +9,8 @@ import type { Dict } from '@/types'
 
 const auth = useAuthStore()
 const rows = ref<Dict[]>([])
+const keyword = ref('')
+const page = reactive({ current: 1, size: 10, total: 0 })
 const detail = ref<Dict>()
 const warehouses = ref<Dict[]>([])
 const suppliers = ref<Dict[]>([])
@@ -23,9 +25,18 @@ const status: Dict = { DRAFT: '草稿', PENDING_APPROVAL: '审批中', APPROVED:
 const statusType: Dict = { DRAFT: 'info', PENDING_APPROVAL: 'warning', APPROVED: 'success', PARTIALLY_RECEIVED: 'warning', RECEIVED: 'success', CLOSED: 'info', REJECTED: 'danger', CANCELLED: 'info' }
 
 async function load() {
-  ;[rows.value, warehouses.value, suppliers.value] = await Promise.all([http.get('/purchase-orders'), http.get('/warehouses'), http.get('/suppliers')])
+  const [pageData, warehouseRows, supplierRows] = await Promise.all([
+    http.get('/purchase-orders/page', { params: { keyword: keyword.value, current: page.current, size: page.size } }),
+    http.get('/warehouses'), http.get('/suppliers')
+  ])
+  rows.value = pageData.records
+  page.total = Number(pageData.total)
+  warehouses.value = warehouseRows
+  suppliers.value = supplierRows
   if (!receipt.warehouseId && warehouses.value.length) receipt.warehouseId = warehouses.value[0].id
 }
+
+function search() { page.current = 1; load() }
 
 async function open(row: Dict) {
   detail.value = await http.get(`/purchase-orders/${row.id}`)
@@ -140,6 +151,7 @@ onMounted(load)
   <div class="page">
     <div class="page-head"><div><h1>采购订单</h1><p>商业条款审批、交付跟踪与分批收货</p></div><el-button @click="load">刷新</el-button></div>
     <div class="panel panel-pad">
+      <div class="toolbar"><el-input v-model="keyword" placeholder="订单号" clearable style="width:240px" @keyup.enter="search" /><el-button @click="search">查询</el-button></div>
       <el-table :data="rows">
         <el-table-column prop="orderNo" label="订单号" width="170" />
         <el-table-column prop="supplier" label="供应商" min-width="200" />
@@ -159,6 +171,7 @@ onMounted(load)
           </template>
         </el-table-column>
       </el-table>
+      <div class="pager"><el-pagination v-model:current-page="page.current" :page-size="page.size" :total="page.total" layout="total, prev, pager, next" background @current-change="load" /></div>
     </div>
 
     <el-drawer v-model="drawer" title="订单详情" size="720px">
@@ -228,5 +241,5 @@ onMounted(load)
 </template>
 
 <style scoped>
-.section-title{font-size:16px;margin:24px 0 12px}.receipt-form{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}.receipt-form :deep(.el-form-item){margin-bottom:8px}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}.danger-text{color:#d94b4b}
+.section-title{font-size:16px;margin:24px 0 12px}.receipt-form{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}.receipt-form :deep(.el-form-item){margin-bottom:8px}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}.danger-text{color:#d94b4b}.pager{display:flex;justify-content:flex-end;margin-top:14px}.toolbar{display:flex;gap:10px;margin-bottom:14px}
 </style>

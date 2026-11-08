@@ -31,6 +31,7 @@ public class MasterDataController {
         return ApiResponse.ok(service.materials(keyword));
     }
     @GetMapping("/materials/{id}") public ApiResponse<Map<String,Object>> material(@PathVariable Long id){return ApiResponse.ok(service.material(id));}
+    @GetMapping("/materials/page") public ApiResponse<Map<String,Object>> materialsPage(@RequestParam(required=false) String keyword,@RequestParam(defaultValue="1") int current,@RequestParam(defaultValue="10") int size){return ApiResponse.ok(service.materialsPage(keyword,current,size));}
     @PostMapping("/materials") @PreAuthorize("hasAnyAuthority('masterdata:edit','masterdata:material:edit')")
     public ApiResponse<Map<String,Object>> createMaterial(@Valid @RequestBody MasterDataService.MaterialRequest r) {
         return ApiResponse.ok(Map.of("id",service.createMaterial(r)));
