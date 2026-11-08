@@ -332,6 +332,11 @@ npm run test:e2e
 - 一键启动：`.\scripts\demo-up.ps1 -Build`（自动处理 9000 端口冲突）
 - 界面截图与 6 帧演示 GIF：`docs/screenshots/`（`demo.gif`）
 
+## 代码风格
+
+- 新增模块（`knowledge`、`budget`、`contract`、`alerts`、`idempotency`、出库与契约层）按可读风格编写：一条语句一行、方法短、复杂 SQL 用文本块。
+- 早期模块存在压缩写法；统一按 `.editorconfig` 格式化，且**格式化单独提交**，避免与功能变更混在同一 diff 里。
+
 ## 当前边界与安全说明
 
 - 核心采购闭环和角色权限可独立演示，但它仍是面试展示型 MVP，不等同于生产级 ERP。询报价、合同、发票、三单匹配、质检、资产维保、消息通知和多租户不在首版范围。
