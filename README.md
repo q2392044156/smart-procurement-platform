@@ -4,6 +4,10 @@
 
 前后端业务系统与 `procurement-agent-harness` 在源码和运行时上解耦；不启动 Agent 时，登录、审批、订单、收货、库存和看板均可独立运行。项目地址：[q2392044156/smart-procurement-platform](https://github.com/q2392044156/smart-procurement-platform)。
 
+![经营看板](docs/screenshots/01-dashboard.png)
+
+> 更多界面截图与 6 帧演示 GIF 见 `docs/screenshots/`，三分钟演示脚本见 `docs/DEMO.md`。
+
 ## 项目结构
 
 ```text
@@ -21,9 +25,25 @@ smart-procurement-platform/
 ## 技术架构
 
 - `frontend/`：Vue 3、TypeScript、Vite、Pinia、Element Plus、ECharts
-- `backend/`：Java 21、Spring Boot 3.5、Spring Security、MyBatis-Plus、Flowable 7.2、Flyway
+- `backend/`：Java 21、Spring Boot 3.5、Spring Security、JdbcTemplate（统一 SQL 访问）、Flowable 7.2、Flyway
 - 基础设施：MySQL 8.4、Redis 7、MinIO、Docker Compose
 - 可选智能能力：同级目录 `../procurement-agent-harness`，通过 Spring Boot 代理 SSE
+
+## 架构一览
+
+```mermaid
+flowchart LR
+  U["浏览器 / 管理端"] --> N["Nginx<br/>Vue SPA + /api/v1 反代"]
+  N --> S["Spring Boot 模块化单体"]
+  S --> DB[("MySQL 8.4<br/>业务数据 + Flowable")]
+  S --> RD[("Redis 7<br/>令牌 / 幂等 / 单号")]
+  S --> OS[("MinIO<br/>原始文件")]
+  H["Agent Harness / MCP"] -.->|"内部令牌 + X-User-Id"| S
+```
+
+- 浏览器只访问 `/api/v1/**`；`/api/**` 是 Agent 内部工具面，Nginx 固定 404，必须经过内部令牌过滤器和业务权限判定。
+- 业务模块之间不互相访问内部实现：文件、知识库、预算、合同通过公开 Service 与扩展点协作（如 `FileReferenceChecker`）。
+- Agent 只负责“理解与编排”，权限、数据范围、状态机、幂等与审计仍由平台裁决。
 
 ## 完整启动与关闭
 
@@ -108,6 +128,10 @@ docker compose stop frontend backend
 - 库存与看板：仓管员可分批收货并校验剩余数量、批次号和序列号；可查看收货单完整明细、库存余额、流水、采购趋势、订单状态及供应商排名。
 - 系统与审计：完整维护用户、组织树和自定义角色；支持多角色分配、数据范围、功能权限、账号/角色/部门启停、密码重置、软删除、内置角色及最后管理员保护，并查看权限清单和操作审计。
 - 知识库：内部制度、流程、合同、供应商资料与模板的统一归档；支持 DOCX/PDF 等文档上传、分类与标签、归属部门、五档可见范围（全员/本部门/本部门及下级/仅创建人/指定用户或角色）、草稿-发布-归档状态流转、版本历史与回滚留痕、权限校验下载，并对被引用的文件做删除保护。
+- 列表与提醒：物资、供应商、采购申请、采购订单、收货、库存余额与流水均提供分页接口（管理端主列表已接入）；提供资质临期/过期、交付临期/逾期、审批积压三类提醒查询，供看板与 Agent 使用；上传文件在关联业务时回读文件头校验真实类型。
+- 出库与领用：仓管员按仓库与物资登记领用，校验库存余额与批次号/序列号，扣减余额并写入 OUT 流水；库存从“只增不减”变为完整出入库闭环。
+- 部门预算：维护部门年度预算，申请提交与直采下单时校验可用额度，预算页展示额度、占用、可用与使用率。
+- 合同管理：合同台账（编号、供应商、金额、起止日期、类型），可关联采购订单并校验供应商一致性，支持草稿-生效-到期/终止流转。
 
 后端按业务模块组织；Controller 只负责 HTTP 适配，业务规则和 SQL 下沉到 Service。详细边界见 `docs/ARCHITECTURE.md`。
 
@@ -123,6 +147,8 @@ docker compose --profile agent up -d --build
 关闭包含 Agent 的整套服务：`docker compose --profile agent down`。
 
 该 profile 会额外启动 Agent API、MCP 网关和 Agent 专用 MongoDB。Spring 会从 JWT 中提取用户身份并覆盖浏览器传入的用户字段；MCP 再用内部令牌、用户 ID 与请求 ID访问业务后端。Agent 未启用或不可用时，AI 接口返回 503，但不影响业务接口。
+
+内部工具面按用途分组：供应商/物资/订单/库存（读写）、采购申请/审批待办/收货记录/经营看板（只读）、知识库检索（可见文档、增量变更、原文地址）。订单状态出参统一为字符串枚举，入参兼容历史数字编码；写接口支持 `Idempotency-Key`，未传时按内容指纹去重，Agent 重试不会重复建单。完整契约见 `docs/AGENT_TOOL_CONTRACT.md`。
 
 ## 本地开发
 
@@ -168,7 +194,7 @@ npm run dev
 
 ## 自动化验收
 
-提交代码前建议执行基础测试与构建：
+提交代码前建议执行基础测试与构建。`mvn test` 除单元测试外，会通过 Testcontainers 启动 MySQL 8.4 与 Redis 容器，跑一遍登录、知识库、采购申请与提醒接口的真实 HTTP 集成测试（需要本机 Docker）：
 
 ```powershell
 cd backend
@@ -179,8 +205,9 @@ npm run test
 npm run build
 ```
 
-默认服务健康后，可以执行可重复的端到端业务验收：
+仓库内置 `.github/workflows/ci.yml`，推送或提交 PR 时自动执行后端测试（含 Testcontainers 集成测试）与前端构建、单元测试。
 
+默认服务健康后，可以执行可重复的端到端业务验收：
 ```powershell
 .\scripts\acceptance-smoke.ps1
 ```
@@ -225,6 +252,26 @@ python .\scripts\knowledge-base-smoke.py
 
 该脚本仅依赖 Python 3.10+ 标准库，默认访问 `http://localhost:3000`，也可传入其他入口地址。
 
+执行 Agent 内部工具面验收（需以 `AGENT_ENABLED=true` 启动，覆盖内部令牌、权限、数据范围、状态口径、幂等、只读工具面与知识库检索接口）：
+
+```powershell
+python .\scripts\agent-contract-smoke.py
+```
+
+该脚本直连后端 `http://localhost:8080`（内部接口不经 Nginx 暴露），接口清单与口径见 `docs/AGENT_TOOL_CONTRACT.md`。
+
+执行 P1 验收（列表分页、Redis 单号序列、到期/超时提醒、上传内容校验）：
+
+```powershell
+python .\scripts\p1-acceptance-smoke.py
+```
+
+执行 P2 验收（出库/领用、预算控制、合同管理）：
+
+```powershell
+python .\scripts\p2-acceptance-smoke.py
+```
+
 脚本通过 Nginx 入口真实调用 API，覆盖角色权限与数据范围、三档金额审批链、驳回重提及多流程历史、申请转订单、订单审批、分批收货、幂等重放、超量收货、批次号校验、序列号唯一性以及库存余额一致性。脚本会写入带“验收”用途的演示单据。
 
 浏览器端登录、菜单权限和越权路由由 Playwright 验证：
@@ -263,6 +310,27 @@ npm run test:e2e
 - 批次物资必须登记批次号；序列号物资逐个登记且全局唯一
 - 收货与库存入账处于同一事务；余额使用乐观锁；写入接口通过 `Idempotency-Key` 防重
 - 金额使用 `DECIMAL(18,2)` / `BigDecimal`，Long ID 和金额在 JSON 中序列化为字符串
+
+## 关键设计取舍
+
+| 决策 | 选择 | 理由 | 代价 |
+|---|---|---|---|
+| 工作流 | Flowable 7 BPMN | 金额分档、跳过节点、历史可查，自研状态机很快失控 | 启动慢、表多、需要理解 BPMN |
+| 数据访问 | JdbcTemplate 手写 SQL | 数据范围、聚合、分页是核心复杂度，ORM 反而碍事 | SQL 会重复，只能靠测试兜底 |
+| 认证 | JWT + Redis 刷新令牌轮换 | 访问无状态，刷新可撤销 | 前端要处理刷新竞态（已做单飞） |
+| Agent 接入 | 内部令牌 + 用户身份透传的防腐层 | Agent 不持有超级权限，权限仍由平台判定 | 工具面需随业务接口同步演进 |
+| 写操作幂等 | 显式 Key 或内容指纹 | Agent 会重试，重复建单不可接受 | 窗口内相同请求会被合并 |
+| 知识库可见性 | 检索**前**过滤可见文档 | 事后过滤等于无权限内容已进入模型上下文 | 检索服务需按用户缓存可见集合 |
+| 文件安全 | 预签名直传 + 关联时回读魔数 | 大文件不经应用层中转，又能校验真实类型 | 病毒扫描仍需外部服务 |
+| 单号 | Redis 按天自增 | 毫秒时间戳并发会撞号 | 依赖 Redis 可用性 |
+
+## 演示与部署
+
+- 三分钟演示脚本：[docs/DEMO.md](docs/DEMO.md)
+- 部署与常见问题：[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+- Agent 工具契约：[docs/AGENT_TOOL_CONTRACT.md](docs/AGENT_TOOL_CONTRACT.md)
+- 一键启动：`.\scripts\demo-up.ps1 -Build`（自动处理 9000 端口冲突）
+- 界面截图与 6 帧演示 GIF：`docs/screenshots/`（`demo.gif`）
 
 ## 当前边界与安全说明
 
