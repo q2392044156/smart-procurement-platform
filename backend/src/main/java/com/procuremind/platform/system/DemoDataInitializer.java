@@ -32,6 +32,57 @@ public class DemoDataInitializer implements ApplicationRunner {
             Long id=jdbc.queryForObject("select id from sys_user where username=?",Long.class,u.username);
             jdbc.update("insert into sys_user_role(user_id,role_id) values(?,?)",id,roleId);
         }
+        seedShowcaseDocuments();
+    }
+
+    /**
+     * V8 迁移里的演示单据依赖 sys_user，而演示账号由本初始化器在 Flyway 之后创建，
+     * 因此在全新数据库上需要在账号就绪后补种一次（全部按单号幂等）。
+     */
+    private void seedShowcaseDocuments(){
+        jdbc.update("""
+                insert into pr_requisition(requisition_no,department_id,applicant_id,required_date,purpose,budget_amount,status,created_by,updated_by)
+                select 'PR-V8-DRAFT',u.department_id,u.id,date_add(current_date,interval 30 day),
+                       '[第四批演示] 可编辑、取消和删除的采购申请',3600,'DRAFT',u.id,u.id
+                from sys_user u where u.username='requester'
+                and not exists(select 1 from pr_requisition where requisition_no='PR-V8-DRAFT')
+                """);
+        jdbc.update("""
+                insert into pr_requisition_item(requisition_id,material_id,quantity,estimated_unit_price,remark,created_by,updated_by)
+                select r.id,m.id,3,1200,'第四批采购申请明细',r.applicant_id,r.applicant_id
+                from pr_requisition r join md_material m on m.code='RAM-DDR5-032'
+                where r.requisition_no='PR-V8-DRAFT'
+                and not exists(select 1 from pr_requisition_item i where i.requisition_id=r.id and i.deleted=0)
+                """);
+        jdbc.update("""
+                insert into pr_requisition(requisition_no,department_id,applicant_id,required_date,purpose,budget_amount,status,cancellation_reason,created_by,updated_by)
+                select 'PR-V8-CANCELLED',u.department_id,u.id,date_add(current_date,interval 20 day),
+                       '[第四批演示] 已取消采购申请',1200,'CANCELLED','业务需求调整',u.id,u.id
+                from sys_user u where u.username='requester'
+                and not exists(select 1 from pr_requisition where requisition_no='PR-V8-CANCELLED')
+                """);
+        jdbc.update("""
+                insert into pr_requisition_item(requisition_id,material_id,quantity,estimated_unit_price,remark,created_by,updated_by)
+                select r.id,m.id,1,1200,'取消前采购明细',r.applicant_id,r.applicant_id
+                from pr_requisition r join md_material m on m.code='RAM-DDR5-032'
+                where r.requisition_no='PR-V8-CANCELLED'
+                and not exists(select 1 from pr_requisition_item i where i.requisition_id=r.id and i.deleted=0)
+                """);
+        jdbc.update("""
+                insert into po_purchase_order(order_no,requisition_id,supplier_id,purchaser_id,delivery_date,tax_rate,total_amount,status,terms,created_by,updated_by)
+                select 'PO-V8-DRAFT',null,s.id,u.id,date_add(current_date,interval 25 day),0.13,7200,'DRAFT',
+                       '[第四批演示] 可编辑、取消和删除的采购订单',u.id,u.id
+                from sp_supplier s join sys_user u on u.username='purchaser'
+                where s.code='SUP-AUTO-001'
+                and not exists(select 1 from po_purchase_order where order_no='PO-V8-DRAFT')
+                """);
+        jdbc.update("""
+                insert into po_purchase_order_item(purchase_order_id,material_id,quantity,received_quantity,unit_price,tax_rate,remark,created_by,updated_by)
+                select o.id,m.id,2,0,3600,0.13,'第四批订单明细',o.purchaser_id,o.purchaser_id
+                from po_purchase_order o join md_material m on m.code='MOTOR-7K5'
+                where o.order_no='PO-V8-DRAFT'
+                and not exists(select 1 from po_purchase_order_item i where i.purchase_order_id=o.id and i.deleted=0)
+                """);
     }
     private record UserSeed(String username,String displayName,String departmentCode,String roleCode,String password) {}
 }

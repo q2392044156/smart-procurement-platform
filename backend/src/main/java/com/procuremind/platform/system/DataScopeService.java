@@ -55,7 +55,7 @@ public class DataScopeService {
         if (scope == Scope.ALL) return new SqlFilter("1=1", new Object[0]);
         if (scope == Scope.SELF) return new SqlFilter(ownerColumn + "=?", new Object[]{user.id()});
         if (scope == Scope.DEPARTMENT) return new SqlFilter(departmentColumn + "=?", new Object[]{user.departmentId()});
-        List<Long> departments = departmentAndChildren(user.departmentId());
+        List<Long> departments = departmentSubtree(user.departmentId());
         String placeholders = String.join(",", Collections.nCopies(departments.size(), "?"));
         return new SqlFilter(departmentColumn + " in (" + placeholders + ")", departments.toArray());
     }
@@ -65,7 +65,8 @@ public class DataScopeService {
                 .stream().map(Scope::valueOf).max(Comparator.comparingInt(Scope::rank)).orElse(Scope.SELF);
     }
 
-    private List<Long> departmentAndChildren(Long root) {
+    /** 部门及其全部下级部门，供数据范围与知识库可见性共用。 */
+    public List<Long> departmentSubtree(Long root) {
         Map<Long, List<Long>> children = new HashMap<>();
         jdbc.query("select id,parent_id from sys_department where deleted=0", rs -> {
             Long parent = rs.getObject("parent_id", Long.class);

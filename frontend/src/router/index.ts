@@ -12,6 +12,7 @@ const routes = [
     { path:'workflow', component:()=>import('@/views/workflow/TasksView.vue'), meta:{title:'审批中心',permission:'workflow:approve'} },
     { path:'orders', component:()=>import('@/views/purchaseorder/OrdersView.vue'), meta:{title:'采购订单',permission:'purchaseorder:view'} },
     { path:'inventory', component:()=>import('@/views/inventory/InventoryView.vue'), meta:{title:'收货与库存',permission:'inventory:view'} },
+    { path:'knowledge', component:()=>import('@/views/knowledge/KnowledgeView.vue'), meta:{title:'知识库',permission:'kb:view'} },
     { path:'assistant', component:()=>import('@/views/agent/AssistantView.vue'), meta:{title:'AI采购助手',permission:'agent:use'} },
     { path:'system', component:()=>import('@/views/system/SystemView.vue'), meta:{title:'系统与审计',permission:['system:user:view','audit:view']} }
   ]},
