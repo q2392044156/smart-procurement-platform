@@ -20,10 +20,12 @@ import java.util.Map;
 public class BusinessAttachmentService {
     private final JdbcTemplate jdbc;
     private final DataScopeService dataScope;
+    private final FileContentValidator contentValidator;
 
-    public BusinessAttachmentService(JdbcTemplate jdbc, DataScopeService dataScope) {
+    public BusinessAttachmentService(JdbcTemplate jdbc, DataScopeService dataScope, FileContentValidator contentValidator) {
         this.jdbc = jdbc;
         this.dataScope = dataScope;
+        this.contentValidator = contentValidator;
     }
 
     public List<Map<String,Object>> list(String businessType,Long businessId) {
@@ -39,6 +41,7 @@ public class BusinessAttachmentService {
 
     @Transactional public Long attach(String businessType,Long businessId,AttachmentRequest request) {
         BusinessType type=parse(businessType); requireWrite(type,businessId); requireOwnedFile(request.fileId());
+        contentValidator.verify(request.fileId());
         if(count("select count(*) from fs_business_attachment where business_type=? and business_id=? and file_id=? and deleted=0",type.name(),businessId,request.fileId())>0)
             throw new BusinessException(HttpStatus.CONFLICT,"该文件已经关联当前单据");
         Long user=SecurityUtils.currentUser().id();
