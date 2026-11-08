@@ -46,4 +46,26 @@ class InternalAgentAuthenticationFilterTest {
         filter.doFilter(request, response, new MockFilterChain());
         assertThat(response.getStatus()).isEqualTo(403);
     }
+
+    @Test
+    void newAgentFacingPathsUseDedicatedPermissions() throws Exception {
+        UserDirectory directory = mock(UserDirectory.class);
+        when(directory.current(3L)).thenReturn(new CurrentUser(3L, "purchaser", "采购员", 4L,
+                Set.of("PURCHASER"), Set.of("requisition:view", "kb:view")));
+        var filter = new InternalAgentAuthenticationFilter(directory, TOKEN, true);
+
+        var workflow = new MockHttpServletRequest("GET", "/api/workflow/todo");
+        workflow.addHeader("X-Internal-Token", TOKEN);
+        workflow.addHeader("X-User-Id", "3");
+        var workflowResponse = new MockHttpServletResponse();
+        filter.doFilter(workflow, workflowResponse, new MockFilterChain());
+        assertThat(workflowResponse.getStatus()).isEqualTo(403);
+
+        var knowledge = new MockHttpServletRequest("GET", "/api/kb/visible-doc-ids");
+        knowledge.addHeader("X-Internal-Token", TOKEN);
+        knowledge.addHeader("X-User-Id", "3");
+        var knowledgeResponse = new MockHttpServletResponse();
+        filter.doFilter(knowledge, knowledgeResponse, new MockFilterChain());
+        assertThat(knowledgeResponse.getStatus()).isEqualTo(200);
+    }
 }

@@ -14,6 +14,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Arrays;
 import java.util.stream.Stream;
 
 @Component
@@ -26,12 +27,33 @@ public class InternalAgentAuthenticationFilter extends OncePerRequestFilter {
     }
     @Override protected boolean shouldNotFilter(HttpServletRequest request){String path=request.getRequestURI();return path.startsWith("/api/v1/")||!path.startsWith("/api/");}
     @Override protected void doFilterInternal(HttpServletRequest request,HttpServletResponse response,FilterChain chain)throws ServletException,IOException{
-        if(!enabled){response.setStatus(HttpServletResponse.SC_NOT_FOUND);return;}
+        if(!enabled){reject(response,HttpServletResponse.SC_NOT_FOUND,"Agent 内部接口未启用");return;}
         String token=request.getHeader("X-Internal-Token");
-        if(token==null){response.sendError(401,"Internal token required");return;}
+        if(token==null){reject(response,HttpServletResponse.SC_UNAUTHORIZED,"缺少内部令牌");return;}
         byte[] supplied=token.getBytes(StandardCharsets.UTF_8);
-        if(!MessageDigest.isEqual(expected,supplied)){response.sendError(401,"Invalid internal token");return;}
-        try{Long userId=Long.valueOf(request.getHeader("X-User-Id"));CurrentUser user=users.current(userId);if(!authorized(request,user)){response.sendError(403,"Business permission denied");return;}var authorities=Stream.concat(user.roles().stream().map(v->new SimpleGrantedAuthority("ROLE_"+v)),user.permissions().stream().map(SimpleGrantedAuthority::new)).toList();SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user,null,authorities));chain.doFilter(request,response);}catch(NumberFormatException e){response.sendError(401,"Invalid internal user identity");}catch(com.procuremind.platform.common.BusinessException e){response.sendError(401,"Invalid internal user identity");}finally{SecurityContextHolder.clearContext();}
+        if(!MessageDigest.isEqual(expected,supplied)){reject(response,HttpServletResponse.SC_UNAUTHORIZED,"内部令牌无效");return;}
+        try{Long userId=Long.valueOf(request.getHeader("X-User-Id"));CurrentUser user=users.current(userId);if(!authorized(request,user)){reject(response,HttpServletResponse.SC_FORBIDDEN,"无权访问该业务接口");return;}var authorities=Stream.concat(user.roles().stream().map(v->new SimpleGrantedAuthority("ROLE_"+v)),user.permissions().stream().map(SimpleGrantedAuthority::new)).toList();SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user,null,authorities));chain.doFilter(request,response);}catch(NumberFormatException e){reject(response,HttpServletResponse.SC_UNAUTHORIZED,"内部用户身份无效");}catch(com.procuremind.platform.common.BusinessException e){reject(response,HttpServletResponse.SC_UNAUTHORIZED,"内部用户身份无效");}finally{SecurityContextHolder.clearContext();}
     }
-    private boolean authorized(HttpServletRequest request,CurrentUser user){String path=request.getRequestURI();boolean read="GET".equals(request.getMethod());String permission=path.startsWith("/api/suppliers/")?(read?"supplier:view":"supplier:edit"):path.startsWith("/api/parts/")?(read?"masterdata:view":"masterdata:edit"):path.startsWith("/api/orders/")?(read?"purchaseorder:view":"purchaseorder:edit"):path.startsWith("/api/inventory/")?(read?"inventory:view":"inventory:receive"):null;return permission!=null&&(user.roles().contains("ADMIN")||user.permissions().contains(permission));}
+    /** 直接写回 JSON，避免 sendError 触发 /error 二次派发后被安全链改写成 401。 */
+    private void reject(HttpServletResponse response,int status,String message)throws IOException{
+        response.setStatus(status);
+        response.setContentType("application/json;charset=UTF-8");
+        response.getWriter().write("{\"code\":"+status+",\"message\":\""+message+"\",\"data\":null}");
+    }
+    private boolean authorized(HttpServletRequest request,CurrentUser user){
+        String path=request.getRequestURI();boolean read="GET".equals(request.getMethod());
+        String[] permissions;
+        if(path.startsWith("/api/suppliers/"))permissions=read?new String[]{"supplier:view"}:new String[]{"supplier:edit","supplier:profile:edit"};
+        else if(path.startsWith("/api/parts/"))permissions=read?new String[]{"masterdata:view"}:new String[]{"masterdata:edit","masterdata:material:edit"};
+        else if(path.startsWith("/api/orders/"))permissions=read?new String[]{"purchaseorder:view"}:new String[]{"purchaseorder:edit"};
+        else if(path.startsWith("/api/inventory/"))permissions=read?new String[]{"inventory:view"}:new String[]{"inventory:receive"};
+        else if(path.startsWith("/api/requisitions/"))permissions=read?new String[]{"requisition:view"}:new String[]{"requisition:create"};
+        else if(path.startsWith("/api/workflow/"))permissions=new String[]{"workflow:approve"};
+        else if(path.startsWith("/api/receipts/"))permissions=new String[]{"inventory:view"};
+        else if(path.startsWith("/api/dashboard/"))permissions=new String[]{"dashboard:view"};
+        else if(path.startsWith("/api/alerts/"))permissions=new String[]{"dashboard:view"};
+        else if(path.startsWith("/api/kb/"))permissions=new String[]{"kb:view"};
+        else permissions=null;
+        return permissions!=null&&(user.roles().contains("ADMIN")||Arrays.stream(permissions).anyMatch(user.permissions()::contains));
+    }
 }

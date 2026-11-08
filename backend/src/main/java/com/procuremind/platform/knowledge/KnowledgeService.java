@@ -37,9 +37,14 @@ public class KnowledgeService {
     private final JdbcTemplate jdbc;
     private final DataScopeService dataScope;
     private final FileStorageService files;
+    private final com.procuremind.platform.file.FileContentValidator contentValidator;
+    private final com.procuremind.platform.system.DocumentNumberService numbers;
 
-    public KnowledgeService(JdbcTemplate jdbc, DataScopeService dataScope, FileStorageService files) {
+    public KnowledgeService(JdbcTemplate jdbc, DataScopeService dataScope, FileStorageService files,
+                            com.procuremind.platform.file.FileContentValidator contentValidator,
+                            com.procuremind.platform.system.DocumentNumberService numbers) {
         this.jdbc = jdbc; this.dataScope = dataScope; this.files = files;
+        this.contentValidator = contentValidator; this.numbers = numbers;
     }
 
     // ==================== 查询 ====================
@@ -87,10 +92,10 @@ public class KnowledgeService {
         long totalCount = total == null ? 0 : total;
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("records", records);
-        result.put("total", totalCount);
+        result.put("total", (int) totalCount);
         result.put("current", page);
         result.put("size", pageSize);
-        result.put("pages", (totalCount + pageSize - 1) / pageSize);
+        result.put("pages", (int) ((totalCount + pageSize - 1) / pageSize));
         return result;
     }
 
@@ -126,6 +131,36 @@ public class KnowledgeService {
         return files.presignRead(Long.valueOf(row.get("fileId").toString()));
     }
 
+    /** 检索服务使用的已发布内容，忽略维护权限，只按可见范围放行。 */
+    public Map<String, Object> publishedContent(Long id) {
+        Clause visible = visibilityClause();
+        List<Object> args = new ArrayList<>();
+        args.add(id);
+        args.addAll(Arrays.asList(visible.args()));
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                select cast(d.file_id as char) fileId from kb_document d
+                where d.id=? and d.deleted=0 and d.status='PUBLISHED' and """ + " " + visible.sql(), args.toArray());
+        if (rows.isEmpty()) throw new BusinessException(HttpStatus.NOT_FOUND, "文档不存在或不在当前可见范围内");
+        return files.presignRead(Long.valueOf(rows.getFirst().get("fileId").toString()));
+    }
+
+    /** 当前身份可见的已发布文档，供检索前过滤。 */
+    public List<Map<String, Object>> visibleDocumentIds() {
+        Clause visible = visibilityClause();
+        return jdbc.queryForList("""
+                select cast(d.id as char) id,d.title,d.category,d.current_version currentVersion,d.updated_at updatedAt
+                from kb_document d
+                where d.deleted=0 and d.status='PUBLISHED' and """ + " " + visible.sql() + " order by d.id", visible.args());
+    }
+
+    /** 指定时间之后变化的文档元数据（含归档与删除），供增量重建索引。 */
+    public List<Map<String, Object>> changedSince(java.time.Instant since) {
+        return jdbc.queryForList("""
+                select cast(id as char) id,status,deleted,current_version currentVersion,updated_at updatedAt
+                from kb_document where updated_at >= ? order by updated_at,id
+                """, java.sql.Timestamp.from(since));
+    }
+
     public Map<String, Object> presignUpload(UploadRequest request) {
         requireManage();
         return files.presignUpload(request.fileName().trim(), request.contentType(), request.size());
@@ -139,6 +174,7 @@ public class KnowledgeService {
         validatePeriod(request.effectiveFrom(), request.effectiveTo());
         if ("CUSTOM".equals(request.visibility())) validateAcl(request.acl());
         requireFile(request.fileId());
+        contentValidator.verify(request.fileId());
         CurrentUser user = SecurityUtils.currentUser();
         Long department = request.ownerDepartmentId() == null ? user.departmentId() : request.ownerDepartmentId();
         requireDepartment(department);
@@ -182,6 +218,7 @@ public class KnowledgeService {
         Map<String, Object> row = requireDocument(id);
         if ("ARCHIVED".equals(row.get("status"))) throw conflict("已归档文档不能新增版本，请先重新发布");
         requireFile(request.fileId());
+        contentValidator.verify(request.fileId());
         int next = ((Number) row.get("currentVersion")).intValue() + 1;
         Long user = SecurityUtils.currentUser().id();
         insertVersion(id, next, request.fileId(), request.changeNote(), user);
@@ -307,12 +344,7 @@ public class KnowledgeService {
     }
 
     private String generateCode() {
-        String date = LocalDate.now().toString().replace("-", "");
-        for (int i = 0; i < 5; i++) {
-            String candidate = "KB-" + date + "-" + String.format("%04d", ThreadLocalRandom.current().nextInt(10000));
-            if (count("select count(*) from kb_document where code=?", candidate) == 0) return candidate;
-        }
-        throw new BusinessException(HttpStatus.CONFLICT, "文档编码生成冲突，请重试");
+        return numbers.next("KB");
     }
 
     private void requireFile(Long fileId) {
