@@ -144,6 +144,19 @@ public class KnowledgeService {
         return files.presignRead(Long.valueOf(rows.getFirst().get("fileId").toString()));
     }
 
+    /** 检索服务内部读取已发布原文，避免预签名 URL 的 host 在容器内不可达。 */
+    public Map<String, Object> publishedRaw(Long id) {
+        Clause visible = visibilityClause();
+        List<Object> args = new ArrayList<>();
+        args.add(id);
+        args.addAll(Arrays.asList(visible.args()));
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                select cast(d.file_id as char) fileId from kb_document d
+                where d.id=? and d.deleted=0 and d.status='PUBLISHED' and """ + " " + visible.sql(), args.toArray());
+        if (rows.isEmpty()) throw new BusinessException(HttpStatus.NOT_FOUND, "文档不存在或不在当前可见范围内");
+        return files.raw(Long.valueOf(rows.getFirst().get("fileId").toString()));
+    }
+
     /** 当前身份可见的已发布文档，供检索前过滤。 */
     public List<Map<String, Object>> visibleDocumentIds() {
         Clause visible = visibilityClause();

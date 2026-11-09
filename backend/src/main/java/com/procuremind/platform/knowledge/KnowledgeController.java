@@ -2,6 +2,8 @@ package com.procuremind.platform.knowledge;
 
 import com.procuremind.platform.common.ApiResponse;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -35,6 +37,15 @@ public class KnowledgeController {
     @GetMapping("/documents/{id}/download")
     public ApiResponse<Map<String, Object>> download(@PathVariable Long id) {
         return ApiResponse.ok(service.download(id));
+    }
+
+    @GetMapping("/documents/{id}/raw")
+    public ResponseEntity<byte[]> raw(@PathVariable Long id) {
+        Map<String, Object> file = service.publishedRaw(id);
+        String contentType = String.valueOf(file.getOrDefault("contentType", "application/octet-stream"));
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(contentType))
+                .body((byte[]) file.get("bytes"));
     }
 
     @PostMapping("/uploads/presign")

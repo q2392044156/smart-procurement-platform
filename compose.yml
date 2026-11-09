@@ -103,6 +103,13 @@ services:
       HF_ENDPOINT: https://hf-mirror.com
       HF_HOME: /data/hf
       KB_STATE_FILE: /app/data/kb_state.json
+      KB_BM25_STATS_FILE: /app/data/bm25_stats.json
+      KB_COLLECTION: procurement_kb_v2
+      KB_RERANKER: llm
+      KB_AUTO_SYNC_SECONDS: "120"
+    env_file:
+      - path: ../procurement-agent-harness/.env
+        required: false
     ports: ["127.0.0.1:8001:8001"]
     depends_on:
       backend: { condition: service_healthy }

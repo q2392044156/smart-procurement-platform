@@ -3,6 +3,7 @@ package com.procuremind.platform.file;
 import com.procuremind.platform.common.BusinessException;
 import com.procuremind.platform.system.SecurityUtils;
 import io.minio.BucketExistsArgs;
+import io.minio.GetObjectArgs;
 import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
@@ -54,13 +55,23 @@ public class FileStorageService {
     }catch(org.springframework.dao.EmptyResultDataAccessException e){throw new BusinessException(HttpStatus.NOT_FOUND,"文件不存在");}
      catch(Exception e){throw unavailable();}}
 
-    public Map<String,Object> download(Long id){try{
-        Map<String,Object> file=jdbc.queryForMap("select original_name,object_key,bucket,uploader_id from fs_file_metadata where id=? and deleted=0",id);var user=SecurityUtils.currentUser();
+    public Map<String,Object> download(Long id){try{        Map<String,Object> file=jdbc.queryForMap("select original_name,object_key,bucket,uploader_id from fs_file_metadata where id=? and deleted=0",id);var user=SecurityUtils.currentUser();
         boolean supplier=user.permissions().contains("supplier:view")&&count("select count(*) from sp_supplier_qualification where file_id=? and deleted=0",id)>0;
         boolean business=attachments.canReadFile(id);
         if(!user.id().toString().equals(file.get("uploader_id").toString())&&!user.roles().contains("ADMIN")&&!user.roles().contains("AUDITOR")&&!supplier&&!business)throw new BusinessException(HttpStatus.FORBIDDEN,"无权访问该文件");
         return Map.of("fileName",file.get("original_name"),"downloadUrl",presignGet(file),"expiresIn",900);
     }catch(BusinessException e){throw e;}catch(org.springframework.dao.EmptyResultDataAccessException e){throw e;}catch(Exception e){throw unavailable();}}
+
+    /** 内部服务流式读取文件内容，绕过预签名 URL 的 host 限制。 */
+    public Map<String,Object> raw(Long id){try{
+        Map<String,Object> file=jdbc.queryForMap("select original_name,object_key,bucket,content_type from fs_file_metadata where id=? and deleted=0",id);
+        try(var stream=minio.getObject(GetObjectArgs.builder().bucket(file.get("bucket").toString()).object(file.get("object_key").toString()).build())){
+            return Map.of("fileName",file.get("original_name"),
+                    "contentType",file.get("content_type")==null?"application/octet-stream":file.get("content_type"),
+                    "bytes",stream.readAllBytes());
+        }
+    }catch(org.springframework.dao.EmptyResultDataAccessException e){throw new BusinessException(HttpStatus.NOT_FOUND,"文件不存在");}
+     catch(Exception e){throw unavailable();}}
 
     public void delete(Long id){try{
         Map<String,Object> file=jdbc.queryForMap("select object_key,bucket,uploader_id from fs_file_metadata where id=? and deleted=0",id);var user=SecurityUtils.currentUser();

@@ -4,6 +4,8 @@ import com.procuremind.platform.common.ApiResponse;
 import com.procuremind.platform.common.BusinessException;
 import com.procuremind.platform.knowledge.KnowledgeService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -41,6 +43,16 @@ public class KnowledgeAgentController {
     @GetMapping("/documents/{id}/content")
     public ApiResponse<Map<String, Object>> content(@PathVariable Long id) {
         return ApiResponse.ok(knowledge.publishedContent(id));
+    }
+
+    /** 直接返回已发布原文，避免预签名 URL 的 host 在 Agent/MCP 容器内不可达。 */
+    @GetMapping("/documents/{id}/raw")
+    public ResponseEntity<byte[]> raw(@PathVariable Long id) {
+        Map<String, Object> file = knowledge.publishedRaw(id);
+        String contentType = String.valueOf(file.getOrDefault("contentType", "application/octet-stream"));
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(contentType))
+                .body((byte[]) file.get("bytes"));
     }
 
     private Instant parse(String since) {
