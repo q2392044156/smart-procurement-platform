@@ -58,6 +58,37 @@ Agent 工具面需要 `AGENT_ENABLED=true` 且直连后端：
 INTERNAL_BASE=http://localhost:8080 AGENT_INTERNAL_TOKEN=... python3 scripts/agent-contract-smoke.py
 ```
 
+## 三、启用 Agent（可选）
+
+Agent、MCP、Mongo 与 Qdrant 都在 `agent` profile 下，不启用时平台可独立运行。
+
+1. 准备 harness 的 `.env`（`../procurement-agent-harness/.env`），至少包含：
+   `DEEPSEEK_API_KEY`、`AGENT_INTERNAL_TOKEN`（与平台一致）、`ERP_BASE_URL=http://backend:8080`。
+2. 平台 `.env` 设置 `AGENT_ENABLED=true` 与同一个 `AGENT_INTERNAL_TOKEN`。
+3. 启动：
+
+```powershell
+.\scripts\demo-up.ps1 -Agent -Build
+```
+
+4. 首次启动会在 `hf-cache` 卷内下载 bge-m3（约 2.2GB，走 `HF_ENDPOINT` 镜像），之后执行一次知识库入库：
+
+```powershell
+docker compose --profile agent exec mcp python -c "from src.kb.sync import sync; print(sync('1'))"
+```
+
+5. 健康检查：
+
+| 组件 | 地址 |
+|---|---|
+| Agent API | `http://localhost:8000/health` |
+| MCP（SSE） | `http://localhost:8001/sse` |
+| Qdrant | `http://localhost:6333/dashboard` |
+| Mongo | 容器内 `mongo:27017` |
+
+> 生产环境不要暴露 8000/8001/6333；Agent 只由平台后端通过 `AGENT_BASE_URL` 访问。
+> 反向代理仅代理 `/api/v1/`，`/api/` 与 MCP/Agent 端口保持内网。
+
 ## 四、常见问题
 
 | 现象 | 原因 / 处理 |

@@ -1,6 +1,7 @@
 param(
     [switch]$Down,
-    [switch]$Build
+    [switch]$Build,
+    [switch]$Agent
 )
 
 $ErrorActionPreference = 'Stop'
@@ -57,14 +58,18 @@ if (Test-Port9000Busy) {
     Write-Host 'Port 9000 is busy (usually WSL); MinIO will be published on 9100/9101.'
 }
 
-$composeArgs = @('compose') + $files + @('up', '-d')
+$composeArgs = @('compose') + $files
+if ($Agent) { $composeArgs += @('--profile', 'agent') }
+$composeArgs += @('up', '-d')
 if ($Build) { $composeArgs += '--build' }
 $code = Invoke-Docker $composeArgs
 
 if ($code -ne 0 -and -not (Test-Path $override)) {
     Write-Host 'Compose failed, retrying with MinIO on 9100/9101...'
     Enable-MinioOverride
-    $composeArgs = @('compose') + $files + @('up', '-d')
+    $composeArgs = @('compose') + $files
+    if ($Agent) { $composeArgs += @('--profile', 'agent') }
+    $composeArgs += @('up', '-d')
     if ($Build) { $composeArgs += '--build' }
     $code = Invoke-Docker $composeArgs
 }
@@ -80,6 +85,11 @@ if ($files -contains $override) {
     Write-Host '  MinIO    http://localhost:9101'
 } else {
     Write-Host '  MinIO    http://localhost:9001'
+}
+if ($Agent) {
+    Write-Host '  Agent    http://localhost:8000/health'
+    Write-Host '  MCP      http://localhost:8001/sse'
+    Write-Host '  Qdrant   http://localhost:6333/dashboard'
 }
 Write-Host ''
 Write-Host 'Stop with: .\scripts\demo-up.ps1 -Down'

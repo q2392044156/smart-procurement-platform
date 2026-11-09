@@ -75,6 +75,9 @@ services:
       MCP_SERVER_URL: http://mcp:8001
       MONGODB_URI: mongodb://mongo:27017
       MONGODB_DB_NAME: procuremind_agent
+      QDRANT_URL: http://qdrant:6333
+      HF_ENDPOINT: https://hf-mirror.com
+      HF_HOME: /data/hf
     env_file:
       - path: ../procurement-agent-harness/.env
         required: false
@@ -83,8 +86,10 @@ services:
       backend: { condition: service_healthy }
       mcp: { condition: service_started }
       mongo: { condition: service_healthy }
+      qdrant: { condition: service_started }
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - hf-cache:/data/hf
   mcp:
     profiles: ["agent"]
     build: ../procurement-agent-harness
@@ -94,8 +99,20 @@ services:
       AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-change-me}
       MCP_HOST: 0.0.0.0
       MCP_PORT: 8001
+      QDRANT_URL: http://qdrant:6333
+      HF_ENDPOINT: https://hf-mirror.com
+      HF_HOME: /data/hf
+    ports: ["127.0.0.1:8001:8001"]
     depends_on:
       backend: { condition: service_healthy }
+      qdrant: { condition: service_started }
+    volumes:
+      - hf-cache:/data/hf
+  qdrant:
+    profiles: ["agent"]
+    image: qdrant/qdrant:latest
+    ports: ["127.0.0.1:6333:6333"]
+    volumes: ["qdrant-data:/qdrant/storage"]
   mongo:
     profiles: ["agent"]
     image: mongo:8
@@ -111,3 +128,5 @@ volumes:
   redis-data:
   minio-data:
   mongo-data:
+  qdrant-data:
+  hf-cache:
