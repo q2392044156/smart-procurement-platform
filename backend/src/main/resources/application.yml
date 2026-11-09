@@ -26,6 +26,10 @@ spring:
     multipart:
       max-file-size: 50MB
       max-request-size: 50MB
+  mvc:
+    async:
+      # Agent 首次建图/连接 MCP 可能超过默认 30s，SSE 需要更长超时
+      request-timeout: 600000
   flyway:
     enabled: true
     baseline-on-migrate: true
