@@ -102,12 +102,14 @@ services:
       QDRANT_URL: http://qdrant:6333
       HF_ENDPOINT: https://hf-mirror.com
       HF_HOME: /data/hf
+      KB_STATE_FILE: /app/data/kb_state.json
     ports: ["127.0.0.1:8001:8001"]
     depends_on:
       backend: { condition: service_healthy }
       qdrant: { condition: service_started }
     volumes:
       - hf-cache:/data/hf
+      - kb-state:/app/data
   qdrant:
     profiles: ["agent"]
     image: qdrant/qdrant:latest
@@ -130,3 +132,4 @@ volumes:
   mongo-data:
   qdrant-data:
   hf-cache:
+  kb-state:

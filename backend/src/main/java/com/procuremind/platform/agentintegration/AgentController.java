@@ -50,6 +50,7 @@ public class AgentController {
                     .header("Content-Type","application/json")
                     .header("Accept","text/event-stream")
                     .header("X-Internal-Token",token)
+                    .header("X-User-Id",String.valueOf(body.getOrDefault("user_id","")))
                     .header("X-Request-Id",requestId==null?"":requestId)
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body),StandardCharsets.UTF_8))
                     .build();
