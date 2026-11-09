@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -82,31 +83,49 @@ public class MasterDataService {
     }
 
     public List<Map<String, Object>> materials(String keyword) {
-        String like = "%" + (keyword == null ? "" : keyword.trim()) + "%";
-        return jdbc.queryForList("""
+        return materials(keyword, null, null, null, null);
+    }
+
+    public List<Map<String, Object>> materials(String keyword, String brand, String category,
+                                               String specification, String trackingMode) {
+        StringBuilder sql = new StringBuilder("""
                 select cast(m.id as char) id,m.code,m.name,cast(m.category_id as char) categoryId,c.name category,
                        cast(m.unit_id as char) unitId,u.name unit,cast(m.brand_id as char) brandId,b.name brand,
                        m.specification,m.tracking_mode trackingMode,m.min_stock minStock,m.attributes_json attributes,m.enabled
                 from md_material m join md_material_category c on c.id=m.category_id
                 join md_unit u on u.id=m.unit_id left join md_brand b on b.id=m.brand_id
-                where m.deleted=0 and (m.code like ? or m.name like ?) order by m.id desc
-                """, like, like);
+                where m.deleted=0""");
+        List<Object> args = new ArrayList<>();
+        appendMaterialFilters(sql, args, keyword, brand, category, specification, trackingMode);
+        sql.append(" order by m.id desc");
+        return jdbc.queryForList(sql.toString(), args.toArray());
     }
 
     public Map<String, Object> materialsPage(String keyword, int current, int size) {
+        return materialsPage(keyword, null, null, null, null, current, size);
+    }
+
+    public Map<String, Object> materialsPage(String keyword, String brand, String category,
+                                             String specification, String trackingMode, int current, int size) {
         int page = Math.max(current, 1);
         int pageSize = Math.min(Math.max(size, 1), 100);
-        String like = "%" + (keyword == null ? "" : keyword.trim()) + "%";
-        Long total = jdbc.queryForObject("select count(*) from md_material m where m.deleted=0 and (m.code like ? or m.name like ?)", Long.class, like, like);
+        StringBuilder where = new StringBuilder(" where m.deleted=0");
+        List<Object> args = new ArrayList<>();
+        appendMaterialFilters(where, args, keyword, brand, category, specification, trackingMode);
+        Long total = jdbc.queryForObject(
+                "select count(*) from md_material m join md_material_category c on c.id=m.category_id "
+                        + "left join md_brand b on b.id=m.brand_id" + where,
+                Long.class, args.toArray());
+        List<Object> pageArgs = new ArrayList<>(args);
+        pageArgs.add(pageSize);
+        pageArgs.add((page - 1) * pageSize);
         List<Map<String, Object>> records = jdbc.queryForList("""
                 select cast(m.id as char) id,m.code,m.name,cast(m.category_id as char) categoryId,c.name category,
                        cast(m.unit_id as char) unitId,u.name unit,cast(m.brand_id as char) brandId,b.name brand,
                        m.specification,m.tracking_mode trackingMode,m.min_stock minStock,m.attributes_json attributes,m.enabled
                 from md_material m join md_material_category c on c.id=m.category_id
                 join md_unit u on u.id=m.unit_id left join md_brand b on b.id=m.brand_id
-                where m.deleted=0 and (m.code like ? or m.name like ?)
-                order by m.id desc limit ? offset ?
-                """, like, like, pageSize, (page - 1) * pageSize);
+                """ + where + " order by m.id desc limit ? offset ?", pageArgs.toArray());
         long totalCount = total == null ? 0 : total;
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("records", records);
@@ -115,6 +134,38 @@ public class MasterDataService {
         result.put("size", pageSize);
         result.put("pages", (int) ((totalCount + pageSize - 1) / pageSize));
         return result;
+    }
+
+    /** 物资模糊检索：编码/名称/品牌/规格/分类；品牌、规格、追踪方式可单独过滤。 */
+    private void appendMaterialFilters(StringBuilder sql, List<Object> args, String keyword,
+                                       String brand, String category, String specification,
+                                       String trackingMode) {
+        if (keyword != null && !keyword.isBlank()) {
+            String like = "%" + keyword.trim() + "%";
+            sql.append(" and (m.code like ? or m.name like ? or b.name like ?"
+                    + " or m.specification like ? or c.name like ?)");
+            args.add(like);
+            args.add(like);
+            args.add(like);
+            args.add(like);
+            args.add(like);
+        }
+        if (brand != null && !brand.isBlank()) {
+            sql.append(" and b.name like ?");
+            args.add("%" + brand.trim() + "%");
+        }
+        if (category != null && !category.isBlank()) {
+            sql.append(" and c.name like ?");
+            args.add("%" + category.trim() + "%");
+        }
+        if (specification != null && !specification.isBlank()) {
+            sql.append(" and m.specification like ?");
+            args.add("%" + specification.trim() + "%");
+        }
+        if (trackingMode != null && !trackingMode.isBlank()) {
+            sql.append(" and m.tracking_mode = ?");
+            args.add(trackingMode.trim().toUpperCase());
+        }
     }
 
     public Map<String, Object> material(Long id) {

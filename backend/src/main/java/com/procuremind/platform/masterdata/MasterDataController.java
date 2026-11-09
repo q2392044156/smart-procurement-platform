@@ -27,11 +27,26 @@ public class MasterDataController {
     @PutMapping("/material-categories/{id}") @PreAuthorize("hasAnyAuthority('masterdata:edit','masterdata:category:edit')") public ApiResponse<Void> updateCategory(@PathVariable Long id,@Valid @RequestBody MasterDataService.CategoryRequest r){service.updateCategory(id,r);return ApiResponse.ok(null);}
     @DeleteMapping("/material-categories/{id}") @PreAuthorize("hasAnyAuthority('masterdata:edit','masterdata:category:edit')") public ApiResponse<Void> deleteCategory(@PathVariable Long id){service.deleteCategory(id);return ApiResponse.ok(null);}
     @GetMapping("/materials")
-    public ApiResponse<List<Map<String,Object>>> materials(@RequestParam(required=false) String keyword) {
-        return ApiResponse.ok(service.materials(keyword));
+    public ApiResponse<List<Map<String,Object>>> materials(
+            @RequestParam(required=false) String keyword,
+            @RequestParam(required=false) String brand,
+            @RequestParam(required=false) String category,
+            @RequestParam(required=false) String specification,
+            @RequestParam(required=false) String trackingMode) {
+        return ApiResponse.ok(service.materials(keyword, brand, category, specification, trackingMode));
     }
     @GetMapping("/materials/{id}") public ApiResponse<Map<String,Object>> material(@PathVariable Long id){return ApiResponse.ok(service.material(id));}
-    @GetMapping("/materials/page") public ApiResponse<Map<String,Object>> materialsPage(@RequestParam(required=false) String keyword,@RequestParam(defaultValue="1") int current,@RequestParam(defaultValue="10") int size){return ApiResponse.ok(service.materialsPage(keyword,current,size));}
+    @GetMapping("/materials/page")
+    public ApiResponse<Map<String,Object>> materialsPage(
+            @RequestParam(required=false) String keyword,
+            @RequestParam(required=false) String brand,
+            @RequestParam(required=false) String category,
+            @RequestParam(required=false) String specification,
+            @RequestParam(required=false) String trackingMode,
+            @RequestParam(defaultValue="1") int current,
+            @RequestParam(defaultValue="10") int size) {
+        return ApiResponse.ok(service.materialsPage(keyword, brand, category, specification, trackingMode, current, size));
+    }
     @PostMapping("/materials") @PreAuthorize("hasAnyAuthority('masterdata:edit','masterdata:material:edit')")
     public ApiResponse<Map<String,Object>> createMaterial(@Valid @RequestBody MasterDataService.MaterialRequest r) {
         return ApiResponse.ok(Map.of("id",service.createMaterial(r)));

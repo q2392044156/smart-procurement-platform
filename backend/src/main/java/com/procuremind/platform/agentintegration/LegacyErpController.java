@@ -114,8 +114,18 @@ public class LegacyErpController {
 
     @GetMapping("/parts/search")
     @PreAuthorize("hasAuthority('masterdata:view')")
-    public ApiResponse<List<Map<String, Object>>> partSearch(@RequestParam String name) {
-        return ApiResponse.ok(jdbc.queryForList(partSelect() + " where m.deleted=0 and m.name like ? order by m.id limit 100", "%" + name + "%"));
+    public ApiResponse<List<Map<String, Object>>> partSearch(
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String brand,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String specification,
+            @RequestParam(required = false) String trackingMode) {
+        StringBuilder sql = new StringBuilder(partSelect()).append(" where m.deleted=0");
+        List<Object> args = new ArrayList<>();
+        appendPartFilters(sql, args, name, q, brand, category, specification, trackingMode);
+        sql.append(" order by m.id limit 100");
+        return ApiResponse.ok(jdbc.queryForList(sql.toString(), args.toArray()));
     }
 
     @GetMapping("/parts/page")
@@ -123,21 +133,61 @@ public class LegacyErpController {
     public ApiResponse<Map<String, Object>> partPage(@RequestParam(defaultValue = "1") int current,
                                                      @RequestParam(defaultValue = "10") int size,
                                                      @RequestParam(required = false) String name,
+                                                     @RequestParam(required = false) String q,
+                                                     @RequestParam(required = false) String brand,
                                                      @RequestParam(required = false) String category,
+                                                     @RequestParam(required = false) String specification,
+                                                     @RequestParam(required = false) String trackingMode,
                                                      @RequestParam(required = false) Long supplierId) {
         current = Math.max(current, 1);
         size = Math.min(Math.max(size, 1), 100);
-        String keyword = "%" + (name == null ? "" : name) + "%";
-        String categoryKeyword = "%" + (category == null ? "" : category) + "%";
-        List<Map<String, Object>> records = jdbc.queryForList(partSelect() + """
-                 where m.deleted=0 and m.name like ? and c.name like ?
-                 order by m.id limit ? offset ?
-                """, keyword, categoryKeyword, size, (current - 1) * size);
-        Long total = jdbc.queryForObject("""
-                select count(*) from md_material m join md_material_category c on c.id=m.category_id
-                where m.deleted=0 and m.name like ? and c.name like ?
-                """, Long.class, keyword, categoryKeyword);
+        StringBuilder where = new StringBuilder(" where m.deleted=0");
+        List<Object> args = new ArrayList<>();
+        appendPartFilters(where, args, name, q, brand, category, specification, trackingMode);
+        List<Object> pageArgs = new ArrayList<>(args);
+        pageArgs.add(size);
+        pageArgs.add((current - 1) * size);
+        List<Map<String, Object>> records = jdbc.queryForList(
+                partSelect() + where + " order by m.id limit ? offset ?", pageArgs.toArray());
+        Long total = jdbc.queryForObject(
+                "select count(*) from md_material m join md_material_category c on c.id=m.category_id "
+                        + "left join md_brand b on b.id=m.brand_id" + where,
+                Long.class, args.toArray());
         return ApiResponse.ok(page(records, total, current, size));
+    }
+
+    /** 商品模糊检索：编码/名称/品牌/规格/分类；品牌、规格、追踪方式可单独过滤。 */
+    private void appendPartFilters(StringBuilder sql, List<Object> args, String name, String q,
+                                   String brand, String category, String specification,
+                                   String trackingMode) {
+        String keyword = (q != null && !q.isBlank()) ? q.trim()
+                : (name == null || name.isBlank() ? null : name.trim());
+        if (keyword != null) {
+            String like = "%" + keyword + "%";
+            sql.append(" and (m.code like ? or m.name like ? or b.name like ?"
+                    + " or m.specification like ? or c.name like ?)");
+            args.add(like);
+            args.add(like);
+            args.add(like);
+            args.add(like);
+            args.add(like);
+        }
+        if (brand != null && !brand.isBlank()) {
+            sql.append(" and b.name like ?");
+            args.add("%" + brand.trim() + "%");
+        }
+        if (category != null && !category.isBlank()) {
+            sql.append(" and c.name like ?");
+            args.add("%" + category.trim() + "%");
+        }
+        if (specification != null && !specification.isBlank()) {
+            sql.append(" and m.specification like ?");
+            args.add("%" + specification.trim() + "%");
+        }
+        if (trackingMode != null && !trackingMode.isBlank()) {
+            sql.append(" and m.tracking_mode = ?");
+            args.add(trackingMode.trim().toUpperCase());
+        }
     }
 
     @GetMapping("/parts/supplier/{supplierId}")
@@ -338,10 +388,11 @@ public class LegacyErpController {
         return """
                 select cast(m.id as char) id,m.code partCode,m.name,m.specification model,m.specification,
                        u.name unit,m.min_stock stockWarningValue,c.name category,m.tracking_mode trackingMode,
-                       m.enabled,(m.enabled=1) available,m.attributes_json attributes
+                       b.name brand,m.enabled,(m.enabled=1) available,m.attributes_json attributes
                 from md_material m
                 join md_material_category c on c.id=m.category_id
                 join md_unit u on u.id=m.unit_id
+                left join md_brand b on b.id=m.brand_id
                 """;
     }
 
