@@ -53,6 +53,9 @@ public class InternalAgentAuthenticationFilter extends OncePerRequestFilter {
         else if(path.startsWith("/api/dashboard/"))permissions=new String[]{"dashboard:view"};
         else if(path.startsWith("/api/alerts/"))permissions=new String[]{"dashboard:view"};
         else if(path.startsWith("/api/kb/"))permissions=new String[]{"kb:view"};
+        else if(path.equals("/api/warehouses")||path.startsWith("/api/warehouses/"))permissions=new String[]{"masterdata:view"};
+        else if(path.equals("/api/budgets")||path.startsWith("/api/budgets/"))permissions=new String[]{"budget:view"};
+        else if(path.startsWith("/api/contracts/"))permissions=new String[]{"contract:view"};
         else permissions=null;
         return permissions!=null&&(user.roles().contains("ADMIN")||Arrays.stream(permissions).anyMatch(user.permissions()::contains));
     }
