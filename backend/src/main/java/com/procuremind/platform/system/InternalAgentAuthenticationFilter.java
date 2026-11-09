@@ -47,7 +47,8 @@ public class InternalAgentAuthenticationFilter extends OncePerRequestFilter {
         else if(path.startsWith("/api/parts/"))permissions=read?new String[]{"masterdata:view"}:new String[]{"masterdata:edit","masterdata:material:edit"};
         else if(path.startsWith("/api/orders/"))permissions=read?new String[]{"purchaseorder:view"}:new String[]{"purchaseorder:edit"};
         else if(path.startsWith("/api/inventory/"))permissions=read?new String[]{"inventory:view"}:new String[]{"inventory:receive"};
-        else if(path.startsWith("/api/requisitions/"))permissions=read?new String[]{"requisition:view"}:new String[]{"requisition:create"};
+        else if(path.startsWith("/api/requisitions/")&&path.endsWith("/convert"))permissions=new String[]{"purchaseorder:edit"};
+        else if(path.equals("/api/requisitions")||path.startsWith("/api/requisitions/"))permissions=read?new String[]{"requisition:view"}:new String[]{"requisition:create"};
         else if(path.startsWith("/api/workflow/"))permissions=new String[]{"workflow:approve"};
         else if(path.startsWith("/api/receipts/"))permissions=new String[]{"inventory:view"};
         else if(path.startsWith("/api/dashboard/"))permissions=new String[]{"dashboard:view"};
