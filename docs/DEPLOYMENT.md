@@ -68,7 +68,12 @@ Agent、MCP、Mongo 与 Qdrant 都在 `agent` profile 下，不启用时平台�
 3. 启动：
 
 ```powershell
-.\scripts\demo-up.ps1 -Agent -Build
+# 首次构建必须用 host 网络，否则 Docker 默认网络下载 CPU torch 会长时间停滞
+cd ..\procurement-agent-harness
+.\scripts\build-images.ps1
+
+cd ..\smart-procurement-platform
+.\scripts\demo-up.ps1 -Agent
 ```
 
 4. 首次启动会在 `hf-cache` 卷内下载 bge-m3（约 2.2GB，走 `HF_ENDPOINT` 镜像），之后执行一次知识库入库：
