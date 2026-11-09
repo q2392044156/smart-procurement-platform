@@ -1,5 +1,6 @@
 package com.procuremind.platform.agentintegration;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.procuremind.platform.common.ApiResponse;
 import com.procuremind.platform.common.BusinessException;
 import com.procuremind.platform.system.CurrentUser;
@@ -14,6 +15,12 @@ import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import org.springframework.security.access.prepost.PreAuthorize;
 
+import java.io.InputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.HashMap;
@@ -21,22 +28,36 @@ import java.util.Map;
 
 @RestController @RequestMapping("/api/v1/ai") @PreAuthorize("hasAuthority('agent:use')")
 public class AgentController {
-    private final WebClient client;private final boolean enabled;private final String token;
-    public AgentController(WebClient.Builder builder,@Value("${procuremind.agent.base-url}")String url,@Value("${procuremind.agent.enabled}")boolean enabled,@Value("${procuremind.agent.internal-token}")String token){this.client=builder.baseUrl(url).build();this.enabled=enabled;this.token=token;}
+    private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(AgentController.class);
+    private final WebClient client;private final boolean enabled;private final String token;private final String baseUrl;
+    private final HttpClient proxy=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+    private final ObjectMapper mapper=new ObjectMapper();
+    public AgentController(WebClient.Builder builder,@Value("${procuremind.agent.base-url}")String url,@Value("${procuremind.agent.enabled}")boolean enabled,@Value("${procuremind.agent.internal-token}")String token){this.client=builder.baseUrl(url).build();this.baseUrl=url;this.enabled=enabled;this.token=token;}
     @PostMapping(value="/chat/stream",produces=MediaType.TEXT_EVENT_STREAM_VALUE)
-    public StreamingResponseBody stream(@RequestBody Map<String,Object> input){check();Map<String,Object> body=identity(input);String requestId=MDC.get("requestId");return output->relay("/api/chat/stream",body,requestId,output);}
+    public StreamingResponseBody stream(@RequestBody String raw){check();Map<String,Object> body=identity(parse(raw));String requestId=MDC.get("requestId");return output->relay("/api/chat/stream",body,requestId,output);}
     @PostMapping(value="/chat/{threadId}/resume",produces=MediaType.TEXT_EVENT_STREAM_VALUE)
-    public StreamingResponseBody resume(@PathVariable String threadId,@RequestBody Map<String,Object> input){check();Map<String,Object> body=identity(input);String requestId=MDC.get("requestId");return output->relay("/api/chat/"+threadId+"/resume",body,requestId,output);}
+    public StreamingResponseBody resume(@PathVariable String threadId,@RequestBody String raw){check();Map<String,Object> body=identity(parse(raw));String requestId=MDC.get("requestId");return output->relay("/api/chat/"+threadId+"/resume",body,requestId,output);}
     @GetMapping("/history") public ApiResponse<Object> history(){check();CurrentUser u=SecurityUtils.currentUser();Object data=client.get().uri(uri->uri.path("/api/history").queryParam("user_id",u.id()).build()).header("X-Internal-Token",token).retrieve().bodyToMono(Object.class).block(Duration.ofSeconds(10));return ApiResponse.ok(data);}
     @GetMapping("/history/{threadId}") public ApiResponse<Object> historyMessages(@PathVariable String threadId){check();CurrentUser u=SecurityUtils.currentUser();Map<?,?> index=client.get().uri(uri->uri.path("/api/history").queryParam("user_id",u.id()).build()).header("X-Internal-Token",token).retrieve().bodyToMono(Map.class).block(Duration.ofSeconds(10));boolean owned=index!=null&&index.get("conversations") instanceof List<?> list&&list.stream().filter(Map.class::isInstance).map(Map.class::cast).anyMatch(x->threadId.equals(String.valueOf(x.get("thread_id"))));if(!owned)throw new BusinessException(HttpStatus.NOT_FOUND,"会话不存在");Object data=client.get().uri("/api/history/{id}/messages",threadId).header("X-Internal-Token",token).retrieve().bodyToMono(Object.class).block(Duration.ofSeconds(10));return ApiResponse.ok(data);}
     @GetMapping("/status") public ApiResponse<Map<String,Object>> status(){return ApiResponse.ok(Map.of("enabled",enabled));}
     private Map<String,Object> identity(Map<String,Object> input){CurrentUser u=SecurityUtils.currentUser();Map<String,Object>b=new HashMap<>(input);b.put("user_id",u.id().toString());b.put("username",u.username());b.put("request_id",MDC.get("requestId"));return b;}
+    @SuppressWarnings("unchecked")
+    private Map<String,Object> parse(String raw){try{return raw==null||raw.isBlank()?new HashMap<>():mapper.readValue(raw,Map.class);}catch(Exception e){throw new BusinessException(HttpStatus.BAD_REQUEST,"请求参数格式错误");}}
     private void relay(String uri,Map<String,Object> body,String requestId,java.io.OutputStream output){
         try{
-            client.post().uri(uri).header("X-Internal-Token",token).header("X-Request-Id",requestId).contentType(MediaType.APPLICATION_JSON).accept(MediaType.TEXT_EVENT_STREAM).bodyValue(body)
-                    .exchangeToFlux(response->response.statusCode().is2xxSuccessful()?response.bodyToFlux(DataBuffer.class):response.createException().flatMapMany(reactor.core.publisher.Flux::error))
-                    .timeout(Duration.ofMinutes(10)).doOnNext(buffer->{try{byte[] bytes=new byte[buffer.readableByteCount()];buffer.read(bytes);output.write(bytes);output.flush();}catch(java.io.IOException e){throw new RuntimeException(e);}finally{DataBufferUtils.release(buffer);}}).blockLast();
-        }catch(Exception e){throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI助手暂时不可用");}
+            HttpRequest request=HttpRequest.newBuilder(URI.create(baseUrl+uri))
+                    .timeout(Duration.ofMinutes(10))
+                    .header("Content-Type","application/json")
+                    .header("Accept","text/event-stream")
+                    .header("X-Internal-Token",token)
+                    .header("X-Request-Id",requestId==null?"":requestId)
+                    .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body),StandardCharsets.UTF_8))
+                    .build();
+            HttpResponse<InputStream> response=proxy.send(request,HttpResponse.BodyHandlers.ofInputStream());
+            if(response.statusCode()/100!=2)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI助手暂时不可用");
+            try(InputStream in=response.body()){in.transferTo(output);output.flush();}
+        }catch(BusinessException e){throw e;}
+        catch(Exception e){log.error("Agent relay failed: {} {}",uri,e.toString(),e);throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI助手暂时不可用");}
     }
     private void check(){if(!enabled)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI助手未启用，业务系统仍可正常使用");}
 }
