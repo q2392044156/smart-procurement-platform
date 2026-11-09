@@ -1,5 +1,10 @@
 # ProcureMind 智能采购平台
 
+[![CI](https://github.com/q2392044156/smart-procurement-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/q2392044156/smart-procurement-platform/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Java 21](https://img.shields.io/badge/Java-21-blue.svg)](backend/pom.xml)
+[![Vue 3](https://img.shields.io/badge/Vue-3-42b883.svg)](frontend/package.json)
+
 面向制造企业的采购与物资供应链全栈项目，覆盖“采购申请 → 多级审批 → 采购订单 → 分批收货 → 库存入账”的核心闭环，适合作为 Spring Boot + Vue 的企业级项目实践与面试演示。
 
 前后端业务系统与 `procurement-agent-harness` 在源码和运行时上解耦；不启动 Agent 时，登录、审批、订单、收货、库存和看板均可独立运行。项目地址：[q2392044156/smart-procurement-platform](https://github.com/q2392044156/smart-procurement-platform)。
@@ -349,3 +354,7 @@ npm run test:e2e
 - Docker 默认将 `MINIO_PUBLIC_ENDPOINT` 设为 `http://localhost:9000`。远程部署时必须改为浏览器可访问的 MinIO HTTPS 地址，否则预签名 URL 无法从客户端使用。
 - 内部旧 Agent API 在 Agent 关闭时返回404，Nginx不向浏览器代理该路径；启用后同时校验强内部令牌、用户身份和业务权限。
 - Compose 对外端口仅绑定 `127.0.0.1`。若部署到服务器，必须更换所有演示密码和 `.env` 密钥，并在反向代理上启用 HTTPS、限制 Swagger/MinIO 控制台访问。
+
+## License
+
+本项目采用 [MIT License](LICENSE)，Copyright (c) 2026 WangQF。
