@@ -74,11 +74,12 @@ class InternalAgentAuthenticationFilterTest {
     void operationsReadPathsRequireDedicatedPermissions() throws Exception {
         UserDirectory directory = mock(UserDirectory.class);
         when(directory.current(5L)).thenReturn(new CurrentUser(5L, "finance", "财务", 5L,
-                Set.of("FINANCE"), Set.of("budget:view", "contract:view", "masterdata:view", "inventory:view")));
+                Set.of("FINANCE"), Set.of("budget:view", "contract:view", "masterdata:view", "inventory:view",
+                        "dashboard:view")));
         var filter = new InternalAgentAuthenticationFilter(directory, TOKEN, true);
 
         for (String path : List.of("/api/warehouses", "/api/budgets", "/api/contracts/page",
-                "/api/inventory/issues", "/api/parts/1/price-history")) {
+                "/api/inventory/issues", "/api/parts/1/price-history", "/api/analytics/inventory-risk")) {
             var request = new MockHttpServletRequest("GET", path);
             request.addHeader("X-Internal-Token", TOKEN);
             request.addHeader("X-User-Id", "5");
