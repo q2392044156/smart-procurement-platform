@@ -43,7 +43,9 @@ public class IdempotencyService {
                 : explicitKey.trim();
         boolean auto = explicitKey == null || explicitKey.isBlank();
 
-        for (int attempt = 0; attempt < 2; attempt++) {
+        // 同一 Key 的并发请求不要立刻 409：等待正在执行的请求完成，返回同一结果。
+        long deadline = System.currentTimeMillis() + 15_000;
+        while (true) {
             try {
                 jdbc.update("insert into sys_idempotency_record(idempotency_key,user_id,operation,status) values(?,?,?,'PROCESSING')",
                         key, userId, operation);
@@ -55,7 +57,11 @@ public class IdempotencyService {
                         from sys_idempotency_record
                         where idempotency_key=? and user_id=? and operation=?
                         """, AUTO_TTL_MINUTES, key, userId, operation);
-                if (rows.isEmpty()) continue;
+                if (rows.isEmpty()) {
+                    if (System.currentTimeMillis() >= deadline) break;
+                    pause();
+                    continue;
+                }
                 Map<String, Object> row = rows.getFirst();
                 String status = String.valueOf(row.get("status"));
                 boolean stale = ((Number) row.get("stale")).intValue() == 1;
@@ -63,11 +69,24 @@ public class IdempotencyService {
                     if (auto && stale) { remove(key, userId, operation); continue; }
                     return readResponse(row.get("response_json"));
                 }
-                if ("FAILED".equals(status) || stale) { remove(key, userId, operation); continue; }
-                throw new BusinessException(HttpStatus.CONFLICT, "相同请求正在处理中，请稍后重试");
+                if ("FAILED".equals(status) || stale) {
+                    remove(key, userId, operation);
+                    continue;
+                }
+                if (System.currentTimeMillis() >= deadline) break;
+                pause();
             }
         }
-        throw new BusinessException(HttpStatus.CONFLICT, "重复请求处理失败，请重试");
+        throw new BusinessException(HttpStatus.CONFLICT, "相同请求仍在处理中，请稍后重试");
+    }
+
+    private void pause() {
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException(HttpStatus.CONFLICT, "等待幂等结果被中断，请重试");
+        }
     }
 
     private Map<String, Object> run(String key, Long userId, String operation, Supplier<Map<String, Object>> action) {
