@@ -28,6 +28,12 @@ jobs:
       - name: mvn test
         working-directory: backend
         run: mvn -B -ntp test
+      - name: 上传 JaCoCo 覆盖率报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: backend/target/site/jacoco
 
   frontend:
     name: 前端构建与单元测试
@@ -49,3 +55,47 @@ jobs:
       - name: 单元测试
         working-directory: frontend
         run: npm run test
+
+  e2e:
+    name: 浏览器端到端测试（Playwright）
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 启动平台（MySQL/Redis/MinIO/后端/前端）
+        run: docker compose up -d --build backend frontend
+
+      - name: 等待后端健康
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/actuator/health >/dev/null; then exit 0; fi
+            sleep 5
+          done
+          docker compose logs backend
+          exit 1
+
+      - name: 安装 Playwright
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: 运行 Playwright
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+        run: npm run test:e2e
+
+      - name: 失败时输出日志
+        if: failure()
+        run: docker compose logs --tail=200 backend frontend
+
+      - name: 清理
+        if: always()
+        run: docker compose down -v
