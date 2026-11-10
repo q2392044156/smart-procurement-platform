@@ -70,6 +70,7 @@ services:
   agent:
     profiles: ["agent"]
     build: ../procurement-agent-harness
+    image: procuremind-agent:latest
     environment:
       AGENT_INTERNAL_TOKEN: ${AGENT_INTERNAL_TOKEN:-change-me}
       MCP_SERVER_URL: http://mcp:8001
@@ -92,7 +93,7 @@ services:
       - hf-cache:/data/hf
   mcp:
     profiles: ["agent"]
-    build: ../procurement-agent-harness
+    image: procuremind-agent:latest
     command: ["python", "-m", "src.mcp_server.server_main"]
     environment:
       ERP_BASE_URL: http://backend:8080
