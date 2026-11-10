@@ -31,15 +31,81 @@
 
 ```text
 smart-procurement-platform/
-├── backend/                 # Spring Boot 模块化单体、Flyway、Flowable
-├── frontend/                # Vue 3 管理端
-├── infra/                   # MinIO 等基础设施配置
-├── sql/                     # 12 个月业务演示数据与导入脚本
-├── samples/                 # 知识库示例文档与生成脚本
-├── docs/                    # 架构说明、截图等
-├── compose.yml              # Docker Compose 一键启动
-└── .env.example             # 环境变量模板
+├── backend/                              # Spring Boot 模块化单体
+│   ├── src/main/java/com/procuremind/platform/
+│   │   ├── requisition/                  # 采购申请、明细、提交/取消/转单
+│   │   ├── purchaseorder/                # 采购订单、明细、提交/关闭/取消
+│   │   ├── workflow/                     # Flowable 待办、审批、时间线
+│   │   ├── inventory/                    # 收货、库存余额、流水、领料出库
+│   │   ├── budget/                       # 部门年度预算与额度校验
+│   │   ├── contract/                     # 合同台账与订单关联
+│   │   ├── supplier/                     # 供应商、联系人、资质、绩效
+│   │   ├── masterdata/                   # 分类、物资、品牌、单位、仓库
+│   │   ├── knowledge/                    # 知识库文档、版本、可见性
+│   │   ├── file/                         # MinIO 文件、附件、类型校验
+│   │   ├── dashboard/                    # 经营看板
+│   │   ├── analytics/                    # 采购趋势、供应商排名等分析
+│   │   ├── alerts/                       # 资质/交付/审批提醒
+│   │   ├── system/                       # 用户、组织、角色、权限、审计、认证
+│   │   ├── agentintegration/             # Agent 内部工具面与 Legacy 适配
+│   │   ├── idempotency/                  # 写操作幂等
+│   │   ├── common/                       # 统一响应、异常、RequestId
+│   │   └── config/                       # Security、MinIO、Jackson、OpenAPI
+│   ├── src/main/resources/
+│   │   ├── db/migration/                 # Flyway V1~V12：表结构/主数据/演示数据
+│   │   └── processes/                    # 申请、订单的 Flowable BPMN
+│   ├── src/test/java/...                 # 单元、集成、架构约束测试
+│   └── pom.xml
+│
+├── frontend/                             # Vue 3 管理端
+│   ├── src/
+│   │   ├── views/
+│   │   │   ├── auth/                     # 登录
+│   │   │   ├── dashboard/                # 经营看板
+│   │   │   ├── requisition/              # 采购申请
+│   │   │   ├── workflow/                 # 审批中心
+│   │   │   ├── purchaseorder/            # 采购订单
+│   │   │   ├── inventory/                # 收货、库存、领料
+│   │   │   ├── budget/                   # 部门预算
+│   │   │   ├── contract/                 # 合同台账
+│   │   │   ├── supplier/                 # 供应商
+│   │   │   ├── masterdata/               # 物资/基础资料
+│   │   │   ├── knowledge/                # 知识库
+│   │   │   ├── agent/                    # 智能采购助手
+│   │   │   └── system/                   # 用户/角色/组织/审计
+│   │   ├── components/                   # 附件、审批时间线等复用组件
+│   │   ├── layouts/                      # 管理端布局
+│   │   ├── router/                       # 路由与权限守卫
+│   │   ├── stores/                       # Pinia 状态
+│   │   ├── api/                          # Axios、SSE、接口封装
+│   │   ├── types/                        # TypeScript 类型
+│   │   └── tests/                        # Vitest 单元测试
+│   ├── e2e/                              # Playwright 浏览器测试
+│   └── package.json
+│
+├── sql/                                  # 12 个月业务演示数据
+│   ├── demo_business_data.sql            # 120 张订单及库存/价格流水
+│   ├── apply_demo_data.ps1               # 一键导入
+│   └── README.md
+│
+├── scripts/                              # 启动、演示数据与验收脚本
+│   ├── demo-up.ps1                       # 一键启动（含端口冲突处理）
+│   ├── seed-showcase-data.ps1            # 演示单据生成
+│   └── *-smoke.ps1 / *.py                # 业务与 Agent 接口验收
+│
+├── infra/minio/                          # MinIO 镜像配置
+├── samples/                              # 知识库示例文档
+├── docs/                                 # 架构、Agent 契约、演示与截图
+│   └── screenshots/                      # README 使用的界面截图
+│
+├── .github/workflows/ci.yml              # 后端/前端/Playwright CI
+├── compose.yml                           # Docker Compose 一键启动
+├── .demo-override.yml                    # 演示环境端口覆盖
+├── .env.example                          # 环境变量模板
+├── LICENSE
+└── README.md
 ```
+
 
 ## 项目架构
 
