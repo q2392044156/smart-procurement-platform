@@ -174,33 +174,85 @@ flowchart LR
 - 知识库混合检索、引用与无依据拒答；
 - Agent 不可用时，不影响平台业务接口。
 
-## 完整启动与关闭
+## 快速启动与运行
 
-### 前置条件
+### 环境要求
 
 - Git
 - Docker Desktop / Docker Engine
 - Docker Compose v2
 - 本机 `3000`、`8080`、`9000`、`9001` 端口未被占用
 
-### 启动
+### 1. 配置环境
 
 ```powershell
 git clone https://github.com/q2392044156/smart-procurement-platform.git
 cd smart-procurement-platform
 Copy-Item .env.example .env
+```
 
+编辑 `.env`，至少确认以下配置：
+
+| 变量 | 说明 |
+|---|---|
+| `DB_PASSWORD` | MySQL 业务账号密码 |
+| `MYSQL_ROOT_PASSWORD` | MySQL root 密码 |
+| `JWT_SECRET` | JWT 签名密钥，至少 32 字节 |
+| `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | MinIO 凭据 |
+| `AGENT_ENABLED` | 不启用 Agent 时保持 `false` |
+| `AGENT_INTERNAL_TOKEN` | 启用 Agent 时填写，至少 32 位，且与 Harness 一致 |
+
+> `.env` 已被 Git 忽略，不要提交真实密钥。
+
+### 2. 首次启动
+
+```powershell
 docker compose up -d --build
 docker compose ps
 ```
 
-正常运行时 `mysql`、`redis`、`minio`、`backend` 应为 `healthy`，`frontend` 应为 `Up`。
+正常状态：
+
+- `mysql`、`redis`、`minio`、`backend` 为 `healthy`；
+- `frontend` 为 `Up`；
+- 首次启动会执行 Flyway 建表和演示主数据初始化。
+
+查看日志：
 
 ```powershell
 docker compose logs -f backend frontend
 ```
 
-### 访问入口
+如果本机 `9000` 端口被占用，改用：
+
+```powershell
+.\scripts\demo-up.ps1 -Build
+```
+
+### 3. 可选：导入完整业务演示数据
+
+首次启动只有主数据和知识库。需要 12 个月、120 张订单的演示数据时：
+
+```powershell
+.\sql\apply_demo_data.ps1
+```
+
+数据包括 56 张申请、120 张采购订单、95 张收货单、48 张领料、401 条库存流水、13 份合同，订单总额约 900 万元。
+
+> 如果同时克隆了 `../procurement-agent-harness`，可以用 `..\procurement-agent-harness\scripts\reset_demo.ps1 -Agent -WithBusiness` 一键清库并重建。
+
+### 4. 可选：启用 Agent
+
+先按 [`procurement-agent-harness`](../procurement-agent-harness/README.md) 的说明构建 Agent 镜像，然后：
+
+```powershell
+$env:AGENT_ENABLED='true'
+docker compose --profile agent up -d
+```
+
+Agent 未启用或未启动时，平台业务功能不受影响。
+
+### 5. 访问入口
 
 | 入口 | 地址 |
 |---|---|
@@ -211,48 +263,40 @@ docker compose logs -f backend frontend
 | Agent API（可选） | http://localhost:8000/health |
 | MCP SSE（可选） | http://localhost:8001/sse |
 
-### 可选：导入完整业务演示数据
+### 6. 日常启动
 
-首次启动只有主数据和知识库。需要 12 个月、120 张订单的演示数据时：
+首次构建完成后，日常启动**不要再加 `--build`**：
 
 ```powershell
-.\sql\apply_demo_data.ps1
+# 只启动平台
+docker compose up -d
+
+# 平台 + Agent
+docker compose --profile agent up -d
 ```
 
-数据包括 56 张申请、120 张采购订单、95 张收货单、48 张领料、401 条库存流水、13 份合同，订单总额约 900 万元。
-
-如果同时克隆了 `../procurement-agent-harness`，也可以一键清库并重建：
+只有在代码、依赖或 Dockerfile 变化后才需要重新构建：
 
 ```powershell
-..\procurement-agent-harness\scripts\reset_demo.ps1 -Agent -WithBusiness
+docker compose up -d --build
 ```
 
-### 可选：启动 Agent
-
-确保 `../procurement-agent-harness/.env` 已准备，并在平台 `.env` 中设置至少 32 位的 `AGENT_INTERNAL_TOKEN`：
+### 7. 日常关闭
 
 ```powershell
-$env:AGENT_ENABLED='true'
-docker compose --profile agent up -d --build
-```
-
-### 关闭
-
-```powershell
-# 停止服务，保留 MySQL / Redis / MinIO 数据
+# 只关闭平台，保留数据卷
 docker compose down
 
-# 如果启用了 Agent
-docker compose --profile agent down
-
-# 只停止前后端，保留基础设施
-docker compose stop frontend backend
-
-# 恢复
-docker compose start
+# 平台 + Agent
+docker compose --profile agent down --remove-orphans
 ```
 
-> `docker compose down -v` 会删除数据库、缓存、MinIO 文件以及 Agent 的 MongoDB/Qdrant 数据卷，仅在确认清空全部数据时使用。
+说明：
+
+- `down` 会删除容器和网络，保留 MySQL、Redis、MinIO 数据卷；
+- 下次启动必须用 `up -d`，不要用 `docker compose start`；
+- 只有确认清空全部数据时才执行 `docker compose down -v`。
+
 
 ## 演示账号
 
