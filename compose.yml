@@ -91,6 +91,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - hf-cache:/data/hf
+      - agent-downloads:/app/data/download
   mcp:
     profiles: ["agent"]
     image: procuremind-agent:latest
@@ -141,3 +142,4 @@ volumes:
   qdrant-data:
   hf-cache:
   kb-state:
+  agent-downloads:
