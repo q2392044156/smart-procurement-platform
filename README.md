@@ -47,7 +47,7 @@ smart-procurement-platform/
 │   │   ├── analytics/                    # 采购趋势、供应商排名等分析
 │   │   ├── alerts/                       # 资质/交付/审批提醒
 │   │   ├── system/                       # 用户、组织、角色、权限、审计、认证
-│   │   ├── agentintegration/             # Agent 内部工具面与 Legacy 适配
+│   │   ├── agentintegration/             # Agent 内部工具面、AI 助手转发（对话/历史/文件）与 Legacy 适配
 │   │   ├── idempotency/                  # 写操作幂等
 │   │   ├── common/                       # 统一响应、异常、RequestId
 │   │   └── config/                       # Security、MinIO、Jackson、OpenAPI
@@ -73,14 +73,16 @@ smart-procurement-platform/
 │   │   │   ├── knowledge/                # 知识库
 │   │   │   ├── agent/                    # 智能采购助手
 │   │   │   └── system/                   # 用户/角色/组织/审计
-│   │   ├── components/                   # 附件、审批时间线等复用组件
+│   │   ├── components/                   # 业务组件：附件、审批时间线、聊天图表附件
+│   │   ├── utils/                        # Markdown 渲染、回复中的附件链接识别
 │   │   ├── layouts/                      # 管理端布局
 │   │   ├── router/                       # 路由与权限守卫
 │   │   ├── stores/                       # Pinia 状态
 │   │   ├── api/                          # Axios、SSE、接口封装
 │   │   ├── types/                        # TypeScript 类型
-│   │   └── tests/                        # Vitest 单元测试
-│   ├── e2e/                              # Playwright 浏览器测试
+│   │   ├── assets/                       # 全局样式与静态资源
+│   │   └── tests/                        # Vitest 单元测试（Markdown/附件/鉴权/SSE）
+│   ├── e2e/                              # Playwright 浏览器测试（登录导航/业务/知识库/助手）
 │   └── package.json
 │
 ├── sql/                                  # 12 个月业务演示数据
@@ -89,18 +91,19 @@ smart-procurement-platform/
 │   └── README.md
 │
 ├── scripts/                              # 启动、演示数据与验收脚本
-│   ├── demo-up.ps1                       # 一键启动（含端口冲突处理）
+│   ├── demo-up.ps1                       # 一键启动/停止（含端口冲突处理）
 │   ├── seed-showcase-data.ps1            # 演示单据生成
+│   ├── install-git-hooks.ps1             # 安装提交规范钩子（作者身份校验）
 │   └── *-smoke.ps1 / *.py                # 业务与 Agent 接口验收
 │
 ├── infra/minio/                          # MinIO 镜像配置
-├── samples/                              # 知识库示例文档
-├── docs/                                 # 架构、Agent 契约、演示与截图
+├── samples/knowledge/                    # 知识库示例文档
+├── docs/                                 # 架构、Agent 工具契约、部署、演示与截图
 │   └── screenshots/                      # README 使用的界面截图
 │
 ├── .github/workflows/ci.yml              # 后端/前端/Playwright CI
 ├── compose.yml                           # Docker Compose 一键启动
-├── .demo-override.yml                    # 演示环境端口覆盖
+├── .demo-override.yml                    # 端口覆盖（9000 被占用时由脚本自动生成）
 ├── .env.example                          # 环境变量模板
 ├── LICENSE
 └── README.md
@@ -127,7 +130,7 @@ flowchart LR
 
 | 层 | 技术 |
 |---|---|
-| 前端 | Vue 3、TypeScript、Vite、Pinia、Element Plus、ECharts |
+| 前端 | Vue 3、TypeScript、Vite、Pinia、Element Plus、ECharts；Vitest + Playwright 测试 |
 | 后端 | Java 21、Spring Boot 3.5、Spring Security、JdbcTemplate、Flowable 7.2、Flyway |
 | 基础设施 | MySQL 8.4、Redis 7、MinIO、Docker Compose |
 | 可选智能能力 | FastAPI、LangGraph、deepagents、MCP、DeepSeek、Qdrant、MongoDB |
@@ -170,6 +173,9 @@ flowchart LR
 
 - 自然语言查询供应商、物资、库存、订单、预算和知识库；
 - 采购分析、图表生成、文档生成；
+- 回复按 Markdown 渲染：表格、标题、列表、引用、代码块（含模型省略空格的 `###标题`、`-列表`）；
+- 图表在会话里内联显示，附文件大小与「下载」按钮（经平台代理取文件，不暴露 Harness 内部端点）；
+- 历史会话可删除，生成过程中可随时中断；
 - 9 个写工具强制人工确认（HITL），支持中断恢复；
 - 知识库混合检索、引用与无依据拒答；
 - Agent 不可用时，不影响平台业务接口。
@@ -181,7 +187,10 @@ flowchart LR
 - Git
 - Docker Desktop / Docker Engine
 - Docker Compose v2
-- 本机 `3000`、`8080`、`9000`、`9001` 端口未被占用
+- 本机 `3000`、`8080`、`9000`、`9001` 端口未被占用（启用 Agent 时另需 `8000`、`8001`、`6333`）
+- 可选：启用 Agent 需先在 `procurement-agent-harness` 构建 `procuremind-agent:latest` 与 `procuremind-sandbox:latest` 两个镜像
+
+> 只想跑业务系统时，无需任何 Java/Node 环境，全部在容器里完成。
 
 ### 1. 配置环境
 
@@ -199,12 +208,21 @@ Copy-Item .env.example .env
 | `MYSQL_ROOT_PASSWORD` | MySQL root 密码 |
 | `JWT_SECRET` | JWT 签名密钥，至少 32 字节 |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | MinIO 凭据 |
-| `AGENT_ENABLED` | 不启用 Agent 时保持 `false` |
-| `AGENT_INTERNAL_TOKEN` | 启用 Agent 时填写，至少 32 位，且与 Harness 一致 |
+| `AGENT_ENABLED` | 不启用 Agent 时保持 `false`；启用时改为 `true` |
+| `AGENT_BASE_URL` | 平台访问 Agent 的地址，容器内默认 `http://agent:8000`；本机直连 Agent 时改 `http://localhost:8000` |
+| `AGENT_INTERNAL_TOKEN` | 启用 Agent 时填写，至少 32 位，且与 Harness 的 `.env` 一致 |
 
 > `.env` 已被 Git 忽略，不要提交真实密钥。
 
 ### 2. 首次启动
+
+推荐用一键脚本（自动从 `.env.example` 复制 `.env`、`9000` 被占用时切到 `9100/9101`）：
+
+```powershell
+.\scripts\demo-up.ps1 -Build
+```
+
+也可以直接用 Compose：
 
 ```powershell
 docker compose up -d --build
@@ -223,11 +241,7 @@ docker compose ps
 docker compose logs -f backend frontend
 ```
 
-如果本机 `9000` 端口被占用，改用：
-
-```powershell
-.\scripts\demo-up.ps1 -Build
-```
+如果本机 `9000` 端口被占用（常见于 WSL），`demo-up.ps1` 会自动生成 `.demo-override.yml` 把 MinIO 换到 `9100/9101`；改为手动启动时加上 `-f compose.yml -f .demo-override.yml` 即可。
 
 ### 3. 可选：导入完整业务演示数据
 
@@ -239,18 +253,40 @@ docker compose logs -f backend frontend
 
 数据包括 56 张申请、120 张采购订单、95 张收货单、48 张领料、401 条库存流水、13 份合同，订单总额约 900 万元。
 
-> 如果同时克隆了 `../procurement-agent-harness`，可以用 `..\procurement-agent-harness\scripts\reset_demo.ps1 -Agent -WithBusiness` 一键清库并重建。
+> 如果同时克隆了 `../procurement-agent-harness`，可以用 `..\procurement-agent-harness\scripts\dev\reset_demo.ps1 -Agent -WithBusiness` 一键清库并重建（该脚本在 Harness 侧，需要那里的 venv 与 Docker 镜像就绪）。
 
 ### 4. 可选：启用 Agent
 
-先按 [`procurement-agent-harness`](../procurement-agent-harness/README.md) 的说明构建 Agent 镜像，然后：
+Agent 由 [`procurement-agent-harness`](../procurement-agent-harness/README.md) 提供（Agent + MCP + Qdrant + MongoDB + 沙箱），按三步接入：
+
+1）在 Harness 仓库根目录构建镜像（一次出 `procuremind-agent:latest` 与 `procuremind-sandbox:latest`）：
 
 ```powershell
-$env:AGENT_ENABLED='true'
-docker compose --profile agent up -d
+cd ..\procurement-agent-harness
+.\scripts\dev\build-images.ps1
 ```
 
-Agent 未启用或未启动时，平台业务功能不受影响。
+2）把平台 `.env` 改成启用状态，并让内部令牌与 Harness `.env` 的 `AGENT_INTERNAL_TOKEN` 完全一致：
+
+```dotenv
+AGENT_ENABLED=true
+AGENT_INTERNAL_TOKEN=<与 Harness 一致的 32 位以上令牌>
+```
+
+3）带 `agent` profile 启动（在平台仓库目录执行）：
+
+```powershell
+cd ..\smart-procurement-platform
+.\scripts\demo-up.ps1 -Agent
+# 等价于：docker compose --profile agent up -d
+```
+
+说明：
+
+- `procuremind-sandbox:latest` 缺失时沙箱会退回 `python:3.11-slim`，此时问答与查询正常，但图表/文档生成不可用；
+- Compose 会以 `required: false` 方式读取 `../procurement-agent-harness/.env`，因此 `ERP_BASE_URL`、`SANDBOX_IMAGE` 等配置在 Harness 侧修改；
+- Agent 未启用或未启动时，平台业务功能不受影响；
+- 助手会话中的图表以内联图片 + 「下载」按钮展示，下载走平台代理 `/api/v1/ai/files/<文件名>`，不直接暴露 Harness 的下载端点。
 
 ### 5. 访问入口
 
@@ -259,9 +295,10 @@ Agent 未启用或未启动时，平台业务功能不受影响。
 | 管理端 | http://localhost:3000 |
 | Swagger | http://localhost:8080/swagger-ui.html |
 | 后端健康检查 | http://localhost:8080/actuator/health |
-| MinIO 控制台 | http://localhost:9001 |
+| MinIO 控制台 | http://localhost:9001（端口冲突时 9101） |
 | Agent API（可选） | http://localhost:8000/health |
 | MCP SSE（可选） | http://localhost:8001/sse |
+| Qdrant 控制台（可选） | http://localhost:6333/dashboard |
 
 ### 6. 日常启动
 
@@ -295,7 +332,38 @@ docker compose --profile agent down --remove-orphans
 
 - `down` 会删除容器和网络，保留 MySQL、Redis、MinIO 数据卷；
 - 下次启动必须用 `up -d`，不要用 `docker compose start`；
-- 只有确认清空全部数据时才执行 `docker compose down -v`。
+- 只有确认清空全部数据时才执行 `docker compose down -v`；
+- 脚本等价写法：`.\scripts\demo-up.ps1 -Down`；启用过 Agent 的，用 `docker compose --profile agent down --remove-orphans` 连 Agent/MCP 一起清干净。
+
+### 8. 自检
+
+```powershell
+# 平台与 Agent 健康检查
+curl http://localhost:8080/actuator/health
+curl http://localhost:8000/health
+
+# 业务接口冒烟（需先启动平台）
+.\scripts\acceptance-smoke.ps1
+```
+
+改过代码后按需跑：
+
+```powershell
+# 前端：单元测试 + 浏览器端到端（端到端需要平台与 Agent 都在跑）
+cd frontend
+npm ci
+npm test
+npx playwright test
+
+# 后端：完整测试用 Testcontainers 起临时 MySQL，需要 Docker 在运行
+cd ..\backend
+mvn -q test
+```
+
+> 端到端里的「图表与表格渲染、可中断回复、历史会话删除」三条用例会真实调用 Agent，约 3 分钟。
+> 只做编译校验时用 `mvn -q -DskipTests compile`，几秒钟即可。
+
+更多部署与演示步骤见 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) 与 [`docs/DEMO.md`](docs/DEMO.md)。
 
 
 ## 演示账号
