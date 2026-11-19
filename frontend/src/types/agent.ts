@@ -10,7 +10,7 @@ export interface AgentInterrupt {
   extracted_data?:Record<string,unknown>
   message?:string
 }
-export interface AgentMessage { role:'user'|'assistant'; content:string; toolCalls?:AgentToolCall[] }
+export interface AgentMessage { role:'user'|'assistant'; content:string; toolCalls?:AgentToolCall[]; stopped?:boolean }
 
 export class SseParser {
   private buffer=''

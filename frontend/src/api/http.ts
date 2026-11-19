@@ -23,6 +23,21 @@ http.interceptors.response.use(response => response.data.data, async (error: Axi
   ElMessage.error(message)
   return Promise.reject(error)
 })
+/**
+ * 取二进制内容（图表/文档）。
+ *
+ * 浏览器无法给 <img src> 带上 Authorization 头，所以统一走这里取 Blob，
+ * 再由调用方换成 objectURL 展示或触发下载。
+ */
+export async function fetchBlob(path: string): Promise<Blob> {
+  const token = localStorage.getItem('pm_access_token')
+  const response = await axios.get<Blob>(`${http.defaults.baseURL}${path}`, {
+    responseType: 'blob',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  return response.data
+}
+
 export interface ApiClient {
   get<T = any>(url:string, config?:AxiosRequestConfig):Promise<T>
   post<T = any>(url:string, data?:any, config?:AxiosRequestConfig):Promise<T>
