@@ -34,24 +34,28 @@ public class SystemManagementService {
         this.authService = authService;
     }
 
+    private static final String USER_SELECT = """
+            select cast(u.id as char) id,u.username,u.display_name displayName,
+                   cast(u.department_id as char) departmentId,d.name department,u.enabled
+            from sys_user u join sys_department d on d.id=u.department_id""";
+
     public List<Map<String, Object>> users() {
-        List<Map<String, Object>> rows = jdbc.queryForList("""
-                select cast(u.id as char) id,u.username,u.display_name displayName,
-                       cast(u.department_id as char) departmentId,d.name department,u.enabled
-                from sys_user u join sys_department d on d.id=u.department_id
-                where u.deleted=0 order by u.id
-                """);
-        rows.forEach(row -> {
-            Long id = Long.valueOf(row.get("id").toString());
-            row.put("roleIds", jdbc.queryForList("select cast(r.id as char) from sys_role r join sys_user_role ur on ur.role_id=r.id where ur.user_id=? and r.deleted=0 order by r.id", String.class, id));
-            row.put("roles", jdbc.queryForList("select r.name from sys_role r join sys_user_role ur on ur.role_id=r.id where ur.user_id=? and r.deleted=0 order by r.id", String.class, id));
-        });
+        List<Map<String, Object>> rows = jdbc.queryForList(USER_SELECT + " where u.deleted=0 order by u.id");
+        rows.forEach(this::attachRoles);
         return rows;
     }
 
     public Map<String, Object> user(Long id) {
-        return users().stream().filter(row -> id.toString().equals(row.get("id"))).findFirst()
+        Map<String, Object> row = jdbc.queryForList(USER_SELECT + " where u.deleted=0 and u.id=?", id).stream().findFirst()
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "用户不存在"));
+        attachRoles(row);
+        return row;
+    }
+
+    private void attachRoles(Map<String, Object> row) {
+        Long id = Long.valueOf(row.get("id").toString());
+        row.put("roleIds", jdbc.queryForList("select cast(r.id as char) from sys_role r join sys_user_role ur on ur.role_id=r.id where ur.user_id=? and r.deleted=0 order by r.id", String.class, id));
+        row.put("roles", jdbc.queryForList("select r.name from sys_role r join sys_user_role ur on ur.role_id=r.id where ur.user_id=? and r.deleted=0 order by r.id", String.class, id));
     }
 
     @Transactional

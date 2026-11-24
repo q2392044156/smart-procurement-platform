@@ -37,19 +37,45 @@ public class MasterDataService {
         this.mapper = mapper;
     }
 
+    /** 详情与列表共用同一段投影，避免详情接口另写一份 select 造成列漂移。 */
+    private static final String CATEGORY_SELECT = """
+            select cast(c.id as char) id,cast(c.parent_id as char) parentId,c.code,c.name,c.description,c.sort_order sortOrder,
+                   (select count(*) from md_material m where m.category_id=c.id and m.deleted=0) materialCount
+            from md_material_category c""";
+
+    private static final String MATERIAL_SELECT = """
+            select cast(m.id as char) id,m.code,m.name,cast(m.category_id as char) categoryId,c.name category,
+                   cast(m.unit_id as char) unitId,u.name unit,cast(m.brand_id as char) brandId,b.name brand,
+                   m.specification,m.tracking_mode trackingMode,m.min_stock minStock,m.attributes_json attributes,m.enabled
+            from md_material m join md_material_category c on c.id=m.category_id
+            join md_unit u on u.id=m.unit_id left join md_brand b on b.id=m.brand_id""";
+
+    private static final String WAREHOUSE_SELECT = """
+            select cast(w.id as char) id,w.code,w.name,w.address,w.manager,w.enabled,
+                   (select count(*) from inv_balance b where b.warehouse_id=w.id and b.deleted=0) balanceCount,
+                   (select count(*) from inv_receipt r where r.warehouse_id=w.id and r.deleted=0) receiptCount
+            from md_warehouse w""";
+
+    private static final String UNIT_SELECT = """
+            select cast(u.id as char) id,u.code,u.name,u.precision_scale precisionScale,u.enabled,
+                   (select count(*) from md_material m where m.unit_id=u.id and m.deleted=0) materialCount
+            from md_unit u""";
+
+    private static final String BRAND_SELECT = """
+            select cast(b.id as char) id,b.code,b.name,b.enabled,
+                   (select count(*) from md_material m where m.brand_id=b.id and m.deleted=0) materialCount
+            from md_brand b""";
+
     public List<Map<String, Object>> categories() {
-        List<Map<String, Object>> rows = jdbc.queryForList("""
-                select cast(c.id as char) id,cast(c.parent_id as char) parentId,c.code,c.name,c.description,c.sort_order sortOrder,
-                       (select count(*) from md_material m where m.category_id=c.id and m.deleted=0) materialCount
-                from md_material_category c where c.deleted=0 order by c.sort_order,c.id
-                """);
+        List<Map<String, Object>> rows = jdbc.queryForList(CATEGORY_SELECT + " where c.deleted=0 order by c.sort_order,c.id");
         rows.forEach(row -> row.put("attributes", attributes(Long.valueOf(row.get("id").toString()))));
         return rows;
     }
 
     public Map<String, Object> category(Long id) {
-        return categories().stream().filter(row -> id.toString().equals(row.get("id"))).findFirst()
-                .orElseThrow(() -> notFound("物资分类不存在"));
+        Map<String, Object> row = findOne(CATEGORY_SELECT + " where c.deleted=0 and c.id=?", "物资分类不存在", id);
+        row.put("attributes", attributes(id));
+        return row;
     }
 
     @Transactional
@@ -88,13 +114,7 @@ public class MasterDataService {
 
     public List<Map<String, Object>> materials(String keyword, String brand, String category,
                                                String specification, String trackingMode) {
-        StringBuilder sql = new StringBuilder("""
-                select cast(m.id as char) id,m.code,m.name,cast(m.category_id as char) categoryId,c.name category,
-                       cast(m.unit_id as char) unitId,u.name unit,cast(m.brand_id as char) brandId,b.name brand,
-                       m.specification,m.tracking_mode trackingMode,m.min_stock minStock,m.attributes_json attributes,m.enabled
-                from md_material m join md_material_category c on c.id=m.category_id
-                join md_unit u on u.id=m.unit_id left join md_brand b on b.id=m.brand_id
-                where m.deleted=0""");
+        StringBuilder sql = new StringBuilder(MATERIAL_SELECT).append(" where m.deleted=0");
         List<Object> args = new ArrayList<>();
         appendMaterialFilters(sql, args, keyword, brand, category, specification, trackingMode);
         sql.append(" order by m.id desc");
@@ -119,13 +139,8 @@ public class MasterDataService {
         List<Object> pageArgs = new ArrayList<>(args);
         pageArgs.add(pageSize);
         pageArgs.add((page - 1) * pageSize);
-        List<Map<String, Object>> records = jdbc.queryForList("""
-                select cast(m.id as char) id,m.code,m.name,cast(m.category_id as char) categoryId,c.name category,
-                       cast(m.unit_id as char) unitId,u.name unit,cast(m.brand_id as char) brandId,b.name brand,
-                       m.specification,m.tracking_mode trackingMode,m.min_stock minStock,m.attributes_json attributes,m.enabled
-                from md_material m join md_material_category c on c.id=m.category_id
-                join md_unit u on u.id=m.unit_id left join md_brand b on b.id=m.brand_id
-                """ + where + " order by m.id desc limit ? offset ?", pageArgs.toArray());
+        List<Map<String, Object>> records = jdbc.queryForList(MATERIAL_SELECT + where + " order by m.id desc limit ? offset ?",
+                pageArgs.toArray());
         long totalCount = total == null ? 0 : total;
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("records", records);
@@ -169,8 +184,7 @@ public class MasterDataService {
     }
 
     public Map<String, Object> material(Long id) {
-        return materials("").stream().filter(row -> id.toString().equals(row.get("id"))).findFirst()
-                .orElseThrow(() -> notFound("物资不存在"));
+        return findOne(MATERIAL_SELECT + " where m.deleted=0 and m.id=?", "物资不存在", id);
     }
 
     @Transactional
@@ -217,17 +231,11 @@ public class MasterDataService {
     }
 
     public List<Map<String, Object>> warehouses() {
-        return jdbc.queryForList("""
-                select cast(w.id as char) id,w.code,w.name,w.address,w.manager,w.enabled,
-                       (select count(*) from inv_balance b where b.warehouse_id=w.id and b.deleted=0) balanceCount,
-                       (select count(*) from inv_receipt r where r.warehouse_id=w.id and r.deleted=0) receiptCount
-                from md_warehouse w where w.deleted=0 order by w.id
-                """);
+        return jdbc.queryForList(WAREHOUSE_SELECT + " where w.deleted=0 order by w.id");
     }
 
     public Map<String, Object> warehouse(Long id) {
-        return warehouses().stream().filter(row -> id.toString().equals(row.get("id"))).findFirst()
-                .orElseThrow(() -> notFound("仓库不存在"));
+        return findOne(WAREHOUSE_SELECT + " where w.deleted=0 and w.id=?", "仓库不存在", id);
     }
 
     @Transactional
@@ -263,16 +271,11 @@ public class MasterDataService {
     }
 
     public List<Map<String, Object>> units() {
-        return jdbc.queryForList("""
-                select cast(u.id as char) id,u.code,u.name,u.precision_scale precisionScale,u.enabled,
-                       (select count(*) from md_material m where m.unit_id=u.id and m.deleted=0) materialCount
-                from md_unit u where u.deleted=0 order by u.id
-                """);
+        return jdbc.queryForList(UNIT_SELECT + " where u.deleted=0 order by u.id");
     }
 
     public Map<String, Object> unit(Long id) {
-        return units().stream().filter(row -> id.toString().equals(row.get("id"))).findFirst()
-                .orElseThrow(() -> notFound("计量单位不存在"));
+        return findOne(UNIT_SELECT + " where u.deleted=0 and u.id=?", "计量单位不存在", id);
     }
 
     @Transactional
@@ -305,16 +308,11 @@ public class MasterDataService {
     }
 
     public List<Map<String, Object>> brands() {
-        return jdbc.queryForList("""
-                select cast(b.id as char) id,b.code,b.name,b.enabled,
-                       (select count(*) from md_material m where m.brand_id=b.id and m.deleted=0) materialCount
-                from md_brand b where b.deleted=0 order by b.id
-                """);
+        return jdbc.queryForList(BRAND_SELECT + " where b.deleted=0 order by b.id");
     }
 
     public Map<String, Object> brand(Long id) {
-        return brands().stream().filter(row -> id.toString().equals(row.get("id"))).findFirst()
-                .orElseThrow(() -> notFound("品牌不存在"));
+        return findOne(BRAND_SELECT + " where b.deleted=0 and b.id=?", "品牌不存在", id);
     }
 
     @Transactional
@@ -516,6 +514,10 @@ public class MasterDataService {
 
     private int defaultSort(Integer value) { return value == null ? 0 : value; }
     private BigDecimal defaultStock(BigDecimal value) { return value == null ? BigDecimal.ZERO : value; }
+    private Map<String, Object> findOne(String sql, String message, Object... args) {
+        return jdbc.queryForList(sql, args).stream().findFirst().orElseThrow(() -> notFound(message));
+    }
+
     private long count(String sql, Object... args) { Long value = jdbc.queryForObject(sql, Long.class, args); return value == null ? 0 : value; }
     private BusinessException conflict(String message) { return new BusinessException(HttpStatus.CONFLICT, message); }
     private BusinessException notFound(String message) { return new BusinessException(HttpStatus.NOT_FOUND, message); }
