@@ -27,7 +27,8 @@ const statusType: Dict = { DRAFT: 'info', PENDING_APPROVAL: 'warning', APPROVED:
 async function load() {
   const [pageData, warehouseRows, supplierRows] = await Promise.all([
     http.get('/purchase-orders/page', { params: { keyword: keyword.value, current: page.current, size: page.size } }),
-    http.get('/warehouses'), http.get('/suppliers')
+    http.get('/warehouses'),
+    auth.can('supplier:view') ? http.get('/suppliers') : Promise.resolve([])
   ])
   rows.value = pageData.records
   page.total = Number(pageData.total)
