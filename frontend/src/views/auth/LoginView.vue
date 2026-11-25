@@ -2,9 +2,20 @@
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+
+/**
+ * 登录页（meta.public，免鉴权）。
+ * 数据来源：POST /auth/login 换令牌，成功后回跳 route.query.redirect 或根路径。
+ * 权限：无；登录后由路由守卫按目标页的 meta.permission 再判定。
+ * 关键交互：回车提交、提交中按钮 loading、演示账号一键回填账号密码。
+ */
+
 const auth=useAuthStore(),router=useRouter(),route=useRoute(),loading=ref(false),form=reactive({username:'admin',password:'Admin@123'})
+// 演示账号清单（与后端初始化数据一致），仅用于本地演示与联调
 const accounts=[['admin','Admin@123','管理员'],['requester','Request@123','申请人'],['manager','Manager@123','部门经理'],['purchaser','Purchase@123','采购员'],['finance','Finance@123','财务'],['warehouse','Warehouse@123','仓管'],['gm','Gm@123','总经理'],['auditor','Audit@123','审计员']]
+// 提交登录：成功后 replace 到目标页（不留历史），finally 保证 loading 复位
 async function submit(){loading.value=true;try{await auth.login(form.username,form.password);router.replace((route.query.redirect as string)||'/')}finally{loading.value=false}}
+// 演示账号回填：只改表单不自动提交，方便手工核对账号权限差异
 function fill(a:string[]){form.username=a[0];form.password=a[1]}
 </script>
 <template><div class="login-page"><section class="intro"><div class="logo">P</div><p class="eyebrow">PROCUREMENT OPERATING SYSTEM</p><h1>让每一笔采购<br/>清晰、合规、可追溯</h1><p class="desc">覆盖物资主数据、供应商准入、采购审批、订单履约、批次与序列号库存，AI 能力按需启用。</p><div class="features"><span>✓ 模块化单体</span><span>✓ Flowable审批</span><span>✓ Agent可插拔</span></div></section><section class="login-card"><div><h2>欢迎回来</h2><p>登录 ProcureMind 智能采购平台</p></div><el-form :model="form" label-position="top" @submit.prevent="submit"><el-form-item label="账号"><el-input v-model="form.username" size="large"/></el-form-item><el-form-item label="密码"><el-input v-model="form.password" type="password" show-password size="large" @keyup.enter="submit"/></el-form-item><el-button type="primary" size="large" :loading="loading" style="width:100%" @click="submit">登录平台</el-button></el-form><div class="demo"><b>演示账号</b><div><button v-for="a in accounts" :key="a[0]" @click="fill(a)">{{a[2]}}</button></div></div></section></div></template>

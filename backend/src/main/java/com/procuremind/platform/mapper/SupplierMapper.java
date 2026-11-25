@@ -8,6 +8,9 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
+    // 供应商档案与联系人/资质/绩效三张子表，SQL 全在 resources/mapper/SupplierMapper.xml；无行锁。
+    // 主联系人是冗余快照设计：子表改完后用 update*Snapshot/clear* 回填供应商表上的 contact_* 字段。
+    // 删除都是软删除并带 userId；子表批量软删除按 supplierId，单条删除再叠 id 与 supplierId 双条件做归属校验。
 /** 供应商档案及其联系人/资质/绩效的读写映射。SQL 全部在 resources/mapper/SupplierMapper.xml。 */
 @Mapper
 public interface SupplierMapper {
@@ -51,6 +54,7 @@ public interface SupplierMapper {
 
     int countValidQualification(@Param("supplierId") Long supplierId);
 
+    // 唯一性校验三件套都成对出现：普通版给新增，Excluding 版给修改（排除自身 id）。
     int countCreditCode(@Param("unifiedCreditCode") String unifiedCreditCode);
 
     int countCreditCodeExcluding(@Param("unifiedCreditCode") String unifiedCreditCode, @Param("id") Long id);
@@ -105,6 +109,7 @@ public interface SupplierMapper {
 
     int softDeleteContact(@Param("id") Long id, @Param("supplierId") Long supplierId, @Param("userId") Long userId);
 
+    // clearPrimary → promoteFirstContactToPrimary：删掉主联系人后自动提升第一条，避免出现零主联系人。
     int clearPrimary(@Param("supplierId") Long supplierId, @Param("userId") Long userId);
 
     int promoteFirstContactToPrimary(@Param("userId") Long userId, @Param("supplierId") Long supplierId);
@@ -144,5 +149,6 @@ public interface SupplierMapper {
 
     int softDeleteEvaluation(@Param("id") Long id, @Param("supplierId") Long supplierId, @Param("userId") Long userId);
 
+    // 按绩效明细重算供应商总分并回写，不是增量累加。
     int recalculateScore(@Param("supplierId") Long supplierId, @Param("userId") Long userId);
 }

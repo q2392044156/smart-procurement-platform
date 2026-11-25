@@ -32,6 +32,12 @@ JdbcTemplate / Flowable / Redis / MinIO（基础设施）
 - `LockMappingTest`（Testcontainers）逐条断言六个加锁查询的 record 字段非空——漏一列就红，正是当初 `lockById` 漏 `total_amount` 导致订单提交 500 的回归闸门。
 - 已知缺口：`PlatformIntegrationTest`（Testcontainers）是唯一会真正执行这些 SQL 的测试，需要 Docker 才能跑。
 - `ApiContractTest` 把 20 个高频端点的响应形状沉成 `backend/src/test/resources/contract/api-shapes.json`：字段名、嵌套、标量类型变了就红，值变了不会。有意改契约时用 `-Dcontract.update=true` 重新生成，并把 json diff 一起提交。
+- **数值口径**（与 `ApiContractTest` 一起守）：
+  - `BigDecimal`（金额、数量、单价、税率、评分）→ **字符串**，前端只展示不参与算术，避免 JS 精度丢分位；
+  - `Long` / `int`（计数、时长、天数、文件字节数）→ **数字**，都是能安全进 JS 的整数；
+  - **ID 一律字符串**：SQL 里 `cast(x.id as char) id`，跨表外键也要 cast；只有 Java 侧拿不到 SQL 别名时才用 `@JsonSerialize(using = ToStringSerializer.class)`（如 `/auth/me` 的 `CurrentUser`）。
+
+  机制在 `backend/src/main/java/com/procuremind/platform/config/JacksonConfig.java`：只把 `BigDecimal` 写成字符串，`Long` 保持数字。历史上这里曾把 `Long` 也写成字符串（为保护 snowflake ID），副作用是计数跟着变成 `"21"`，而 `datediff` / `timestampdiff` 这类列在不同驱动版本下时而是 `Long`、时而是 `Integer`——同一个字段忽字符串忽数字，`daysLeft` 就因此让 CI 红过一次。现在边界是「金额与 ID 用字符串，其余数值用数字」，ID 的字符串化交给 SQL 显式完成。
 
 同一层内**不再按业务分包**：控制器在 `controller` 下平铺，服务在 `service` 下平铺，业务归属由类名表达（`RequisitionService`、`PurchaseOrderService`…）。跨业务调用只走对方 Service 的公开方法，不直接访问其 SQL。
 

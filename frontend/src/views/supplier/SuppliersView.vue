@@ -5,6 +5,14 @@ import http from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import type { Dict } from '@/types'
 
+/**
+ * 供应商管理：准入、分级、联系人、资质证照与绩效评价的档案维护。
+ * 数据来源：/suppliers/page 与 /suppliers/{id}（含 contacts/qualifications/evaluations）；
+ *           资质附件先 POST /files/presign 换预签名地址，再 PUT 直传对象存储。
+ * 权限：supplier:edit，或 supplier:profile/qualification/evaluation:edit 分块控制。
+ * 关键交互：档案抽屉内联维护三类子资源、状态下拉变更、评价保存后重算总分。
+ */
+
 const auth = useAuthStore()
 const rows = ref<Dict[]>([])
 const page = reactive({ current: 1, size: 10, total: 0 })
@@ -33,6 +41,7 @@ const canProfile = computed(() => auth.can('supplier:edit') || auth.can('supplie
 const canQualification = computed(() => auth.can('supplier:edit') || auth.can('supplier:qualification:edit'))
 const canEvaluation = computed(() => auth.can('supplier:edit') || auth.can('supplier:evaluation:edit'))
 
+// 供应商分页列表；关键字按编码或名称模糊匹配，条件变更后由调用方重置页码
 async function load() {
   const data: Dict = await http.get('/suppliers/page', { params: { keyword: keyword.value, current: page.current, size: page.size } })
   rows.value = data.records
@@ -46,11 +55,13 @@ function resetForm() {
 
 function openCreate() { resetForm(); editorVisible.value = true }
 
+// 档案：一次取回主档与三类子资源，抽屉内各表格直接渲染
 async function openDetail(row: Dict) {
   detail.value = await http.get(`/suppliers/${row.id}`)
   detailVisible.value = true
 }
 
+// 子资源增删改后的统一收口：同时刷新抽屉内详情与列表，保持两处一致
 async function refreshDetail() {
   if (detail.value?.id) detail.value = await http.get(`/suppliers/${detail.value.id}`)
   await load()
@@ -63,6 +74,7 @@ async function openEdit(row: Dict) {
   editorVisible.value = true
 }
 
+// 保存主档：编码名称必填，有编辑 id 走 PUT 否则 POST，成功后刷新列表
 async function save() {
   if (!form.code.trim() || !form.name.trim()) {
     ElMessage.warning('供应商编码和名称不能为空')
@@ -75,6 +87,7 @@ async function save() {
   await load()
 }
 
+// 状态变更：二次确认后 PATCH；暂停/黑名单对下单的影响由后端裁决
 async function changeStatus(row: Dict, status: string) {
   await ElMessageBox.confirm(`确认将“${row.name}”变更为${statusName[status]}状态吗？`, '供应商状态变更', { type: 'warning' })
   await http.patch(`/suppliers/${row.id}/status`, { status })
@@ -121,6 +134,7 @@ function openQualification(row?: Dict) {
 
 function chooseQualificationFile(file: any) { qualificationFile.value = file.raw }
 
+// 资质附件：预签名后 PUT 直传对象存储，失败直接抛错由调用方提示
 async function uploadQualificationFile() {
   if (!qualificationFile.value) return qualificationForm.fileId || null
   const file = qualificationFile.value
@@ -131,6 +145,7 @@ async function uploadQualificationFile() {
   return presign.fileId
 }
 
+// 保存资质：先确保附件已上传拿到 fileId，再写资质记录并刷新档案
 async function saveQualification() {
   if (!qualificationForm.name) { ElMessage.warning('资质名称不能为空'); return }
   const payload = { name: qualificationForm.name, fileId: await uploadQualificationFile(), validFrom: qualificationForm.validFrom || null, validUntil: qualificationForm.validUntil || null }
@@ -145,6 +160,7 @@ async function removeQualification(row: Dict) {
   await http.delete(`/suppliers/${detail.value!.id}/qualifications/${row.id}`); await refreshDetail()
 }
 
+// 下载资质：先用 fileId 换带签名的下载地址，再新窗口打开，避免暴露存储密钥
 async function downloadQualification(row: Dict) {
   const file: Dict = await http.get(`/files/${row.fileId}`)
   window.open(file.downloadUrl, '_blank', 'noopener')
@@ -156,6 +172,7 @@ function openEvaluation(row?: Dict) {
   evaluationVisible.value = true
 }
 
+// 绩效评价：保存后后端按三项分数重算总分，这里刷新档案拿到新评分
 async function saveEvaluation() {
   const base = `/suppliers/${detail.value!.id}/evaluations`
   if (editingEvaluationId.value) await http.put(`${base}/${editingEvaluationId.value}`, evaluationForm)

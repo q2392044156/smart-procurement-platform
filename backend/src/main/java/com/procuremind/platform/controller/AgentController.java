@@ -27,6 +27,11 @@ import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * AI 助手接入面，路由前缀 /api/v1/ai；类级 agent:use 覆盖全部端点（含 /status）。
+ * 本类是反向代理：给请求补 user_id、username、request_id 与内部令牌后转发给 Agent 服务，SSE 原样透传。
+ * 刻意不做：不解析对话内容、不落库、不做领域校验；会话归属只比对一次 history 索引（owns），其余交给 Agent。
+ */
 @RestController @RequestMapping("/api/v1/ai") @PreAuthorize("hasAuthority('agent:use')")
 public class AgentController {
     private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(AgentController.class);
@@ -34,14 +39,20 @@ public class AgentController {
     private final HttpClient proxy=HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final ObjectMapper mapper=new ObjectMapper();
     public AgentController(WebClient.Builder builder,@Value("${procuremind.agent.base-url}")String url,@Value("${procuremind.agent.enabled}")boolean enabled,@Value("${procuremind.agent.internal-token}")String token){this.client=builder.baseUrl(url).build();this.baseUrl=url;this.enabled=enabled;this.token=token;}
+    // 流式问答：agent:use；请求体原样透传并注入身份与 requestId，Agent 未启用时 503。
     @PostMapping(value="/chat/stream",produces=MediaType.TEXT_EVENT_STREAM_VALUE)
     public StreamingResponseBody stream(@RequestBody String raw){check();Map<String,Object> body=identity(parse(raw));String requestId=MDC.get("requestId");return output->relay("/api/chat/stream",body,requestId,output);}
+    // 断线续答：agent:use；按 threadId 接续上次流，归属由 Agent 侧按 user_id 隔离，本类不再校验。
     @PostMapping(value="/chat/{threadId}/resume",produces=MediaType.TEXT_EVENT_STREAM_VALUE)
     public StreamingResponseBody resume(@PathVariable String threadId,@RequestBody String raw){check();Map<String,Object> body=identity(parse(raw));String requestId=MDC.get("requestId");return output->relay("/api/chat/"+threadId+"/resume",body,requestId,output);}
+    // 会话列表：agent:use；只查当前用户 id 的历史索引，返回该用户全部会话。
     @GetMapping("/history") public ApiResponse<Object> history(){check();CurrentUser u=SecurityUtils.currentUser();Object data=client.get().uri(uri->uri.path("/api/history").queryParam("user_id",u.id()).build()).header("X-Internal-Token",token).retrieve().bodyToMono(Object.class).block(Duration.ofSeconds(10));return ApiResponse.ok(data);}
+    // 会话消息 / 删除会话：agent:use；先确认 threadId 属于当前用户，否则 404，避免泄露会话存在性。
     @GetMapping("/history/{threadId}") public ApiResponse<Object> historyMessages(@PathVariable String threadId){check();CurrentUser u=SecurityUtils.currentUser();if(!owns(threadId,u))throw new BusinessException(HttpStatus.NOT_FOUND,"会话不存在");Object data=client.get().uri("/api/history/{id}/messages",threadId).header("X-Internal-Token",token).retrieve().bodyToMono(Object.class).block(Duration.ofSeconds(10));return ApiResponse.ok(data);}
     @DeleteMapping("/history/{threadId}") public ApiResponse<Map<String,Object>> deleteHistory(@PathVariable String threadId){check();CurrentUser u=SecurityUtils.currentUser();if(!owns(threadId,u))throw new BusinessException(HttpStatus.NOT_FOUND,"会话不存在");client.delete().uri("/api/history/{id}",threadId).header("X-Internal-Token",token).retrieve().bodyToMono(Object.class).block(Duration.ofSeconds(10));return ApiResponse.ok(Map.of("threadId",threadId,"deleted",true));}
+    // 沙箱产物下载：agent:use；文件名去掉斜杠后代理下载，产物只保留最近一次运行，取不到即 404。
     @GetMapping("/files/{fileName}") public ResponseEntity<byte[]> file(@PathVariable String fileName){check();String safe=fileName.replace("/","").replace("\\","");if(safe.isBlank())throw new BusinessException(HttpStatus.BAD_REQUEST,"文件名无效");try{HttpRequest request=HttpRequest.newBuilder(URI.create(baseUrl+"/api/download/"+URLEncoder.encode(safe,StandardCharsets.UTF_8).replace("+","%20"))).timeout(Duration.ofSeconds(60)).header("X-Internal-Token",token).GET().build();HttpResponse<byte[]> response=proxy.send(request,HttpResponse.BodyHandlers.ofByteArray());if(response.statusCode()/100!=2)throw new BusinessException(HttpStatus.NOT_FOUND,"文件不存在或已过期（沙箱产物只保留在最近一次运行中）");String encoded=URLEncoder.encode(safe,StandardCharsets.UTF_8).replace("+","%20");return ResponseEntity.ok().contentType(mediaType(safe)).header(HttpHeaders.CONTENT_DISPOSITION,"inline; filename*=UTF-8''"+encoded).body(response.body());}catch(BusinessException e){throw e;}catch(Exception e){log.error("Agent file relay failed: {}",e.toString(),e);throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"文件暂时无法下载");}}
+    // 启用状态：agent:use；只回 enabled 开关，供前端决定是否显示助手入口。
     @GetMapping("/status") public ApiResponse<Map<String,Object>> status(){return ApiResponse.ok(Map.of("enabled",enabled));}
     private boolean owns(String threadId,CurrentUser u){Map<?,?> index=client.get().uri(uri->uri.path("/api/history").queryParam("user_id",u.id()).build()).header("X-Internal-Token",token).retrieve().bodyToMono(Map.class).block(Duration.ofSeconds(10));return index!=null&&index.get("conversations") instanceof List<?> list&&list.stream().filter(Map.class::isInstance).map(Map.class::cast).anyMatch(x->threadId.equals(String.valueOf(x.get("thread_id"))));}
     private MediaType mediaType(String name){String lower=name.toLowerCase();switch(lower.substring(lower.lastIndexOf('.')+1)){case "png":return MediaType.IMAGE_PNG;case "jpg":case "jpeg":return MediaType.IMAGE_JPEG;case "gif":return MediaType.IMAGE_GIF;case "webp":return MediaType.parseMediaType("image/webp");case "svg":return MediaType.parseMediaType("image/svg+xml");case "pdf":return MediaType.APPLICATION_PDF;case "json":return MediaType.APPLICATION_JSON;case "html":return MediaType.TEXT_HTML;case "csv":return MediaType.parseMediaType("text/csv");case "md":case "txt":return MediaType.parseMediaType("text/plain;charset=UTF-8");default:return MediaType.APPLICATION_OCTET_STREAM;}}

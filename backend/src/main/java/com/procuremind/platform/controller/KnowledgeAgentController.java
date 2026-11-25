@@ -17,6 +17,9 @@ import java.util.Map;
  * 知识库对检索服务（harness / RAG）暴露的内部接口，供其按用户可见性增量同步。
  *
  * <p>只经内部令牌访问；返回的文档内容仍通过 {@link KnowledgeService#download} 做可见性校验。</p>
+ * <p>路由前缀 {@code /api/kb}，与对外的 {@code /api/v1/kb} 分开：只经内部令牌认证、不走 @PreAuthorize，
+ * 可见性由 Service 用当前身份（本人/部门子树/角色）逐条判定，因此四个端点都不额外声明权限码。</p>
+ * <p>刻意不做：不提供写端点、不分页、不缓存；{@code since} 解析失败按 400 拒绝，而不是静默退回全量。</p>
  */
 @RestController
 @RequestMapping("/api/kb")

@@ -5,6 +5,13 @@ import http from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import type { Dict } from '@/types'
 
+/**
+ * 部门预算页：按年度展示各部门的预算额度、已占用、可用额度与使用率。
+ * 数据来源：GET /budgets?year=；调整走 PUT /budgets/{departmentId}?year=&amount=。
+ * 权限：budget:view 可查看；budget:edit 才出现「调整」按钮并允许改额度。
+ * 关键交互：切换年份查询、弹窗调整额度（保存后关闭并刷新，使用率超阈值告警配色）。
+ */
+
 const auth = useAuthStore()
 const canEdit = computed(() => auth.can('budget:edit'))
 const rows = ref<Dict[]>([])
@@ -12,13 +19,16 @@ const year = ref(new Date().getFullYear())
 const dialog = ref(false)
 const editing = reactive<Dict>({ departmentId: '', department: '', amount: 0 })
 
+// 按当前年份取预算列表；金额由后端算好，前端只负责展示与标签着色
 async function load() { rows.value = await http.get('/budgets', { params: { year: year.value } }) }
 
+// 打开调整弹窗：回填部门与已分配额度（不是可用额度），金额转数值再进输入框
 function openEdit(row: Dict) {
   Object.assign(editing, { departmentId: row.departmentId, department: row.department, amount: Number(row.allocated) })
   dialog.value = true
 }
 
+// 保存额度：先做非负校验并提示，成功后关弹窗并刷新，避免与后端计算值不一致
 async function save() {
   if (!editing.amount || Number(editing.amount) < 0) return ElMessage.warning('请输入非负预算金额')
   await http.put(`/budgets/${editing.departmentId}?year=${year.value}&amount=${editing.amount}`)
@@ -27,7 +37,9 @@ async function save() {
   await load()
 }
 
+// 预算金额固定两位小数并带千分位，避免「10000.0」这类展示口径不一致
 function money(value: unknown) { return `¥ ${Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 })}` }
+// 使用率配色：≥100% 危险、≥80% 预警、其余正常，与列表标签语义一致
 function utilizationType(row: Dict) {
   const value = Number(row.utilization)
   return value >= 100 ? 'danger' : value >= 80 ? 'warning' : 'success'

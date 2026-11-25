@@ -32,6 +32,8 @@ import com.procuremind.platform.pojo.request.SupplierRequest;
  *
  * <p>写操作一律复用领域 Service 的校验与事务，不再直接拼 SQL；状态出入参统一为平台状态字符串，
  * 入参兼容历史数字编码（见 {@link LegacyStatus}）。</p>
+ * <p>路径前缀 {@code /api}（不是 /api/v1），共 5 组：供应商、物资、订单、库存查询，另有 1 组内部实现不放路由；
+ * 全部经内部令牌校验并按路径授予粗粒度权限，Nginx 对 {@code /api/} 直接 404，浏览器拿不到入口。</p>
  */
 @RestController
 @RequestMapping("/api")
@@ -50,6 +52,8 @@ public class LegacyErpController {
     }
 
     // ==================== 供应商 ====================
+    // 供应商 5 个端点：读需 supplier:view，写需 supplier:edit 或 supplier:profile:edit；
+    // 写操作的唯一性、初始状态与状态机校验都在 SupplierService，本类不碰事务。
 
     @GetMapping("/suppliers/search")
     @PreAuthorize("hasAuthority('supplier:view')")
@@ -87,6 +91,7 @@ public class LegacyErpController {
         return ApiResponse.ok(jdbc.queryForMap(supplierSelect() + " where s.id=? and s.deleted=0", id));
     }
 
+    // 新建供应商：初始状态由 Service 固定为待审核，必须先过资质审核才可转合格，返回体只回 id。
     @PostMapping("/suppliers/create")
     @PreAuthorize("hasAnyAuthority('supplier:edit','supplier:profile:edit')")
     public ApiResponse<Map<String, Object>> supplierCreate(@RequestBody Map<String, Object> body) {
@@ -112,6 +117,8 @@ public class LegacyErpController {
     }
 
     // ==================== 物资 ====================
+    // 物资 5 个端点：读需 masterdata:view，写需 masterdata:edit 或 masterdata:material:edit；
+    // 分类/单位按 code 或 name 反查主数据，查不到即 400；分页 size 由 Service 夹在 1~100。
 
     @GetMapping("/parts/get/{id}")
     @PreAuthorize("hasAuthority('masterdata:view')")
@@ -222,6 +229,9 @@ public class LegacyErpController {
     }
 
     // ==================== 订单 ====================
+    // 订单 7 个端点：读需 purchaseorder:view，写需 purchaseorder:edit；列表按 DataScopeService 的行级范围过滤。
+    // create/update 走 IdempotencyService（LEGACY_CREATE_ORDER / LEGACY_UPDATE_ORDER），同 key 重放上次结果。
+    // 本类不写状态流转 SQL——submit/close 由 PurchaseOrderService 加行锁后判定，避免 Agent 绕过状态机。
 
     @GetMapping("/orders/page")
     @PreAuthorize("hasAuthority('purchaseorder:view')")
@@ -319,6 +329,7 @@ public class LegacyErpController {
         return ApiResponse.ok(null);
     }
 
+    // 改订单状态：只映射 SUBMIT 与 CLOSE 两个动作，其余状态串由 LegacyStatus.decision 拒绝。
     @PatchMapping("/orders/update-status/{id}")
     @PreAuthorize("hasAuthority('purchaseorder:edit')")
     public ApiResponse<Void> orderStatus(@PathVariable Long id, @RequestParam String status) {
@@ -330,6 +341,8 @@ public class LegacyErpController {
     }
 
     // ==================== 库存查询 ====================
+    // 库存 5 个端点：全部只读，需 inventory:view；inbound/outbound 故意保留路径但直接 409，
+    // 库存只能由已审批订单的正式收货接口（/api/v1/receipts）变动，防止 Agent 凭空调整账实。
 
     @GetMapping("/inventory/warning")
     @PreAuthorize("hasAuthority('inventory:view')")

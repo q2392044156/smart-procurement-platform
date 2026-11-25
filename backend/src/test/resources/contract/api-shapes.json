@@ -57,7 +57,7 @@
           "$type" : "string"
         },
         "itemCount" : {
-          "$type" : "string"
+          "$type" : "number"
         },
         "purpose" : {
           "$type" : "string"
@@ -168,7 +168,7 @@
           "$type" : "string"
         },
         "receiptCount" : {
-          "$type" : "string"
+          "$type" : "number"
         },
         "status" : {
           "$type" : "string"
@@ -407,7 +407,7 @@
           "$type" : "string"
         },
         "contactCount" : {
-          "$type" : "string"
+          "$type" : "number"
         },
         "contactName" : {
           "$type" : "string"
@@ -419,10 +419,10 @@
           "$type" : "string"
         },
         "evaluationCount" : {
-          "$type" : "string"
+          "$type" : "number"
         },
         "expiredQualificationCount" : {
-          "$type" : "string"
+          "$type" : "number"
         },
         "id" : {
           "$type" : "string"
@@ -434,10 +434,10 @@
           "$type" : "string"
         },
         "orderCount" : {
-          "$type" : "string"
+          "$type" : "number"
         },
         "qualificationCount" : {
-          "$type" : "string"
+          "$type" : "number"
         },
         "score" : {
           "$type" : "string"
@@ -661,10 +661,10 @@
   "GET /api/v1/dashboard/summary" : {
     "$type" : "object",
     "activeOrders" : {
-      "$type" : "string"
+      "$type" : "number"
     },
     "lowStockCount" : {
-      "$type" : "string"
+      "$type" : "number"
     },
     "lowStockMaterials" : {
       "$type" : "array",
@@ -682,12 +682,12 @@
           "$type" : "string"
         },
         "value" : {
-          "$type" : "string"
+          "$type" : "number"
         }
       }
     },
     "pendingApprovals" : {
-      "$type" : "string"
+      "$type" : "number"
     },
     "supplierRanking" : {
       "$type" : "array",
@@ -726,7 +726,7 @@
         "$type" : "number"
       },
       "overdueCount" : {
-        "$type" : "string"
+        "$type" : "number"
       }
     },
     "deliveries" : {
@@ -742,7 +742,7 @@
         "$type" : "string"
       },
       "overdueCount" : {
-        "$type" : "string"
+        "$type" : "number"
       },
       "withinDays" : {
         "$type" : "number"
@@ -787,7 +787,7 @@
         "$type" : "string"
       },
       "overdueCount" : {
-        "$type" : "string"
+        "$type" : "number"
       },
       "withinDays" : {
         "$type" : "number"
@@ -861,7 +861,7 @@
         "$type" : "string"
       },
       "durationMs" : {
-        "$type" : "string"
+        "$type" : "number"
       },
       "id" : {
         "$type" : "string"

@@ -15,6 +15,9 @@ import java.util.Map;
 /**
  * 分析类内部工具面：供应商记分卡、库存风险、花费分析。
  * 仅内部令牌可访问，权限统一为 {@code dashboard:view}。
+ * <p>路由前缀 {@code /api/analytics}，只经内部令牌访问；三个端点统一 dashboard:view，具体路径为
+ * /suppliers/{id}/scorecard、/inventory-risk、/spend，行级数据范围由 Service 用 scope 参数下推。</p>
+ * <p>刻意不做：不导出、不落库、不分页；本类不拼 SQL、不校验范围，越权风险由 scope 与 SQL 共同兜住。</p>
  */
 @RestController
 @RequestMapping("/api/analytics")
@@ -25,6 +28,7 @@ public class AnalyticsAgentController {
         this.analytics = analytics;
     }
 
+    // 供应商记分卡：dashboard:view；year=0 表示当年，分数与订单统计由 AnalyticsMapper 聚合。
     @GetMapping("/suppliers/{id}/scorecard")
     @PreAuthorize("hasAuthority('dashboard:view')")
     public ApiResponse<Map<String, Object>> supplierScorecard(@PathVariable Long id,
@@ -32,12 +36,14 @@ public class AnalyticsAgentController {
         return ApiResponse.ok(analytics.supplierScorecard(id, year));
     }
 
+    // 库存风险：dashboard:view；无参数，返回低库存与呆滞清单，不含分页。
     @GetMapping("/inventory-risk")
     @PreAuthorize("hasAuthority('dashboard:view')")
     public ApiResponse<List<Map<String, Object>>> inventoryRisk() {
         return ApiResponse.ok(analytics.inventoryRisk());
     }
 
+    // 花费分析：dashboard:view；groupBy 选分组维度（部门/供应商/品类/月份），按 scope 过滤。
     @GetMapping("/spend")
     @PreAuthorize("hasAuthority('dashboard:view')")
     public ApiResponse<Map<String, Object>> spend(@RequestParam(defaultValue = "0") int year,

@@ -13,6 +13,8 @@ import java.util.Map;
  *
  * <p>可见性片断需要 userId（created_by 等 bigint 列）与 userIdKey（kb_document_acl.subject_key
  * 是 varchar，按原实现以字符串绑定）两个形参；部门子树与角色用集合传入，由 XML 的 foreach 绑定。</p>
+ * <p>写路径（insertDocument/insertVersion/updateStatus/deleteAcl/insertAcl）不做可见性过滤，由 Service
+ * 先查 findReadable 再写；countUser/countRole/countDepartment/countFile 是授权对象与文件的存在性校验。</p>
  */
 @Mapper
 public interface KnowledgeMapper {
@@ -32,6 +34,7 @@ public interface KnowledgeMapper {
                                             @Param("roles") List<String> roles,
                                             @Param("size") int size, @Param("offset") int offset);
 
+    // findDetail/findVersions/findAcl 是维护路径的读取，不做可见性过滤，调用方必须是管理角色。
     Map<String, Object> findDetail(@Param("id") Long id);
 
     List<Map<String, Object>> findVersions(@Param("id") Long id);
@@ -57,6 +60,7 @@ public interface KnowledgeMapper {
                                                  @Param("departmentIds") List<Long> departmentIds,
                                                  @Param("roles") List<String> roles);
 
+    // 增量重建索引用：返回自 since 起有变动的文档（含归档与删除）。
     List<Map<String, Object>> changedSince(@Param("since") Timestamp since);
 
     /** 维护路径的读取，不做可见性过滤。 */
@@ -84,6 +88,7 @@ public interface KnowledgeMapper {
                        @Param("effectiveFrom") LocalDate effectiveFrom,
                        @Param("effectiveTo") LocalDate effectiveTo, @Param("userId") Long userId);
 
+    // updateFile 同时刷新 current_version，与 insertVersion 配对，避免两处版本号错位。
     int updateFile(@Param("id") Long id, @Param("fileId") Long fileId,
                    @Param("currentVersion") int currentVersion, @Param("userId") Long userId);
 

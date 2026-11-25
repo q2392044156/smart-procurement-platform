@@ -8,6 +8,14 @@ import BusinessAttachments from '@/components/BusinessAttachments.vue'
 import type { Dict } from '@/types'
 import { formatQty } from '@/utils/datetime'
 
+/**
+ * 采购申请：申请单列表、按金额匹配审批链，批准后转为采购订单。
+ * 数据来源：/requisitions/page、/requisitions/{id}、/materials、/suppliers；
+ *           提交 POST /{id}/submit，转单 POST /{id}/convert。
+ * 权限：requisition:create/submit/cancel/delete，转单还需 purchaseorder:edit。
+ * 关键交互：新建或编辑草稿（明细可增删）、详情抽屉、提交、取消、转订单。
+ */
+
 const auth = useAuthStore()
 const rows = ref<Dict[]>([])
 const keyword = ref('')
@@ -32,6 +40,7 @@ const orderTotal = computed(() => convertItems.value.reduce((sum, item) => sum +
 const statusName: Dict = { DRAFT: '草稿', PENDING_APPROVAL: '审批中', APPROVED: '已批准', REJECTED: '已驳回', CONVERTED: '已转订单', CANCELLED: '已取消' }
 const statusType: Dict = { DRAFT: 'info', PENDING_APPROVAL: 'warning', APPROVED: 'success', REJECTED: 'danger', CONVERTED: 'success' }
 
+// 并发取列表与下拉；物资/供应商按权限决定是否请求，避免无权限时整页报错
 async function load() {
   const [pageData, materialRows, supplierRows] = await Promise.all([
     http.get('/requisitions/page', { params: { keyword: keyword.value, current: page.current, size: page.size } }),
@@ -56,11 +65,13 @@ function openCreate() {
   editorVisible.value = true
 }
 
+// 详情：取整单后开抽屉，附件与审批时间线由子组件各自按 businessId 拉取
 async function openDetail(row: Dict) {
   detail.value = await http.get(`/requisitions/${row.id}`)
   detailVisible.value = true
 }
 
+// 编辑：把详情映射回表单，数量与单价统一转数值，避免字符串参与计算
 async function openEdit(row: Dict) {
   const data: Dict = await http.get(`/requisitions/${row.id}`)
   editingId.value = row.id
@@ -77,6 +88,7 @@ async function openEdit(row: Dict) {
   editorVisible.value = true
 }
 
+// 保存草稿：需求日期/用途/物资必填，有 id 走 PUT 否则 POST，成功后刷新
 async function save() {
   if (!form.requiredDate || !form.purpose?.trim() || !form.items.length || form.items.some((x: Dict) => !x.materialId)) {
     ElMessage.warning('请完整填写需求日期、用途和物资明细')
@@ -94,6 +106,7 @@ async function save() {
   }
 }
 
+// 提交审批：二次确认后进入流程，状态变审批中并刷新列表
 async function submit(row: Dict) {
   await ElMessageBox.confirm(`确认提交申请 ${row.requisitionNo}？提交后将进入审批流程。`, '提交确认', { type: 'warning' })
   await http.post(`/requisitions/${row.id}/submit`)
@@ -117,6 +130,7 @@ async function remove(row: Dict) {
   await load()
 }
 
+// 转订单：回填明细，预估单价作为订单单价初值，供采购员按实际议价调整
 async function openConvert(row: Dict) {
   const data: Dict = await http.get(`/requisitions/${row.id}`)
   detail.value = data
@@ -126,6 +140,7 @@ async function openConvert(row: Dict) {
   convertVisible.value = true
 }
 
+// 生成订单：供应商与交付日期必填，成功后提示去采购订单页提交审批
 async function doConvert() {
   if (!convert.supplierId || !convert.deliveryDate) {
     ElMessage.warning('请选择供应商和交付日期')
@@ -137,6 +152,7 @@ async function doConvert() {
   await load()
 }
 
+// 数据范围：申请人只能改自己的单据，ADMIN 角色例外
 function isOwner(row: Dict) { return row.applicantId === auth.user?.id }
 function canManage(row: Dict) { return isOwner(row) || !!auth.user?.roles.includes('ADMIN') }
 function addItem() { form.items.push(emptyItem()) }

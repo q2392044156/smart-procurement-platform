@@ -8,6 +8,14 @@ import { splitAttachments, type Segment } from '@/utils/attachments'
 import { renderMarkdown } from '@/utils/markdown'
 import type { Dict } from '@/types'
 
+/**
+ * AI 采购助手：流式对话、工具调用可视化与人工确认（HITL）中断。
+ * 数据来源：/ai/status、/ai/history、/ai/history/{threadId}；对话用 fetch 直连
+ *           /api/v1/ai/chat/stream 与 /{threadId}/resume（SSE，需手动带 Authorization）。
+ * 权限：agent:use；Agent 未启用时输入框禁用并提示先在后端开启集成。
+ * 关键交互：发送/停止生成、历史会话切换与删除、审批中断确认、缺失信息补充后续跑。
+ */
+
 const available = ref(false)
 const input = ref('')
 const loading = ref(false)
@@ -28,6 +36,7 @@ const phaseSteps = [['thinking', '思考'], ['planning', '规划'], ['executing'
 const phaseIndex = computed(() => phaseSteps.findIndex(x => x[0] === phase.value))
 const beijingTime = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
 
+// 历史时间统一按北京时间展示：后端可能给无时区字符串，先补 Z 再解析
 function formatBeijingTime(value: unknown) {
   if (!value) return ''
   let raw = String(value)
@@ -47,6 +56,7 @@ onMounted(async () => {
   }
 })
 
+// 历史会话列表：失败静默降级为空，不影响当前对话
 async function loadHistory() {
   try {
     const data: Dict = await http.get('/ai/history')
@@ -56,6 +66,7 @@ async function loadHistory() {
   }
 }
 
+// 切换历史会话：拉取消息后把阶段置为完成态，避免旧进度条残留
 async function selectConversation(conversation: Dict) {
   try {
     const data: Dict = await http.get(`/ai/history/${conversation.thread_id}`)
@@ -73,6 +84,7 @@ async function selectConversation(conversation: Dict) {
   }
 }
 
+// 删除会话：确认框取消直接返回；删的是当前会话则新开一个空会话
 async function removeConversation(conversation: Dict) {
   try {
     await ElMessageBox.confirm(`删除会话「${conversation.title || '新会话'}」？删除后无法恢复。`, '删除会话', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
@@ -89,6 +101,7 @@ async function removeConversation(conversation: Dict) {
   }
 }
 
+// 新会话：换 threadId 并清空消息、待办与中断，欢迎语重置
 function newChat() {
   threadId.value = crypto.randomUUID()
   messages.value = [{ role: 'assistant', content: WELCOME }]
@@ -98,6 +111,7 @@ function newChat() {
   phaseLabel.value = '等待输入'
 }
 
+// 发送：空文本或生成中直接忽略；先落用户气泡，再开流式请求
 async function send() {
   const text = input.value.trim()
   if (!text || loading.value) return
@@ -106,12 +120,14 @@ async function send() {
   await startStream('/api/v1/ai/chat/stream', { message: text, thread_id: threadId.value })
 }
 
+// 中断续跑：批准、拒绝、补充信息都走这里，payload 原样回传给 Agent
 async function resume(payload: Record<string, unknown>) {
   interrupt.value = null
   supplement.value = ''
   await startStream(`/api/v1/ai/chat/${threadId.value}/resume`, { resume: payload })
 }
 
+// 停止生成：abort 掉 fetch，流式循环会抛 AbortError 并标记「已停止」
 function stop() {
   if (!controller.value) return
   phaseLabel.value = '正在停止…'
@@ -125,6 +141,8 @@ function scrollToBottom() {
   })
 }
 
+// 流式主循环：fetch + ReadableStream 逐块交给 SseParser，按事件更新气泡、阶段与工具列表；
+// 异常时保留已生成内容并提示；finally 统一复位 loading 与阶段，并刷新历史列表。
 async function startStream(url: string, body: Dict) {
   const reply: AgentMessage = { role: 'assistant', content: '', toolCalls: [] }
   messages.value.push(reply)
@@ -174,6 +192,7 @@ async function startStream(url: string, body: Dict) {
   }
 }
 
+// 事件分派：token 追加正文，tool_* 维护工具卡片，interrupt 挂起等待人工处理
 function handleEvent(event: AgentEvent, reply: AgentMessage) {
   switch (event.type) {
     case 'token':
@@ -246,6 +265,7 @@ function json(value: unknown) {
   }
 }
 
+// 正文按附件链接切段，文本段走 Markdown，附件段交给 ChatAttachment 取二进制
 function segments(message: AgentMessage): Segment[] {
   return splitAttachments(message.content)
 }

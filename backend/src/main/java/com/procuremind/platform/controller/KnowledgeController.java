@@ -19,6 +19,8 @@ import com.procuremind.platform.pojo.request.KnowledgeUploadRequest;
 
 /**
  * 知识库管理接口。原文上传走本模块自己的预签名策略，下载由服务层按可见范围授权。
+ * <p>路由前缀 {@code /api/v1/kb}，类级 kb:view 可读；上传、建文档、改文档、加版本、改状态、删除都需 kb:manage。</p>
+ * <p>可见性在 Service 里按本人/部门子树/角色过滤，本类只做参数绑定；原文下载与 raw 输出都不走对象存储直链。</p>
  */
 @RestController
 @RequestMapping("/api/v1/kb")
@@ -27,6 +29,7 @@ public class KnowledgeController {
     private final KnowledgeService service;
     public KnowledgeController(KnowledgeService service) { this.service = service; }
 
+    // 四个读端点：kb:view；列表按身份过滤可见范围，详情/下载/raw 都先校验可见性，越权一律 404。
     @GetMapping("/documents")
     public ApiResponse<Map<String, Object>> list(@RequestParam(required = false) String keyword,
                                                  @RequestParam(required = false) String category,
@@ -55,6 +58,7 @@ public class KnowledgeController {
                 .body((byte[]) file.get("bytes"));
     }
 
+    // 写端点六个：均需 kb:manage；presign 只发上传地址，建文档时校验分类、密级与初始状态。
     @PostMapping("/uploads/presign")
     @PreAuthorize("hasAuthority('kb:manage')")
     public ApiResponse<Map<String, Object>> presign(@Valid @RequestBody KnowledgeUploadRequest request) {
@@ -74,6 +78,7 @@ public class KnowledgeController {
         return ApiResponse.ok("知识库文档已更新", null);
     }
 
+    // 版本与状态：加版本生成新版本号，改状态控制发布/归档/下线，删除是软删除并让检索侧增量失效。
     @PostMapping("/documents/{id}/versions")
     @PreAuthorize("hasAuthority('kb:manage')")
     public ApiResponse<Map<String, Object>> addVersion(@PathVariable Long id, @Valid @RequestBody KnowledgeVersionRequest request) {
@@ -94,6 +99,7 @@ public class KnowledgeController {
         return ApiResponse.ok(null);
     }
 
+    // 分类树：kb:view；一次性返回全部分类，不分页，供前端下拉与 Agent 过滤提示词使用。
     @GetMapping("/categories")
     public ApiResponse<List<Map<String, String>>> categories() {
         return ApiResponse.ok(List.of(

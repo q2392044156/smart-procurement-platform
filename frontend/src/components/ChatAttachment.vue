@@ -3,6 +3,13 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { fetchBlob } from '@/api/http'
 import type { Attachment } from '@/utils/attachments'
 
+/**
+ * 对话附件卡片：图片内联预览、其他文件下载，二进制统一走带鉴权的 fetchBlob。
+ * 数据来源：GET /ai/files/{name}（Blob），由 api/http.ts 的 fetchBlob 附带 Authorization。
+ * 权限：跟随对话页的 agent:use，无独立权限码。
+ * 关键交互：挂载即取文件，最多重试 5 次（间隔递增）；卸载时释放 objectURL 防泄漏。
+ */
+
 const props = defineProps<{ attachment: Attachment; ready?: boolean }>()
 const state = ref<'loading' | 'ready' | 'error'>('loading')
 const objectUrl = ref('')
@@ -11,7 +18,9 @@ const MAX_ATTEMPTS = 5
 let attempts = 0
 let timer: ReturnType<typeof setTimeout> | undefined
 
+// 下载地址按文件名编码拼接，中文名与空格都要 encodeURIComponent
 const downloadPath = computed(() => `/ai/files/${encodeURIComponent(props.attachment.name)}`)
+// 已知字节数才展示体积，文件未取到时留空，避免显示 0 KB
 const sizeText = computed(() => (size.value > 0 ? `${(size.value / 1024).toFixed(1)} KB` : ''))
 const isReady = computed(() => props.ready !== false)
 
@@ -47,11 +56,13 @@ watch(isReady, ready => {
   void load()
 })
 
+// 卸载时清定时器并释放 objectURL，否则流式重渲染会持续泄漏内存
 onBeforeUnmount(() => {
   if (timer) clearTimeout(timer)
   if (objectUrl.value) URL.revokeObjectURL(objectUrl.value)
 })
 
+// 用 Blob 的 objectURL 触发浏览器下载，避免 a[download] 跨域失效
 function download() {
   if (!objectUrl.value) return
   const link = document.createElement('a')

@@ -3,14 +3,23 @@ import { ref, watch } from 'vue'
 import http from '@/api/http'
 import type { Dict } from '@/types'
 
+/**
+ * 审批时间线子组件：把 Flowable 的节点记录渲染成 el-timeline。
+ * 数据来源：GET /workflow/timeline/{businessType}/{businessId}。
+ * 权限：只读展示，无独立权限码，跟随父页面的可见性。
+ * 关键交互：无操作；businessId 为空显示空态，未结束节点用空心点标「待处理」。
+ */
+
 const props = defineProps<{ businessType: 'REQUISITION' | 'PURCHASE_ORDER'; businessId?: string }>()
 const rows = ref<Dict[]>([])
 const loading = ref(false)
 
+// 节点时间格式化：未结束（endTime 为空）显示「处理中」而不是空白
 function format(value: unknown) {
   return value ? new Date(String(value)).toLocaleString('zh-CN', { hour12: false }) : '处理中'
 }
 
+// 有 ID 才请求；loading 交给 v-loading，失败保留上次数据并交由拦截器提示
 async function load() {
   if (!props.businessId) {
     rows.value = []

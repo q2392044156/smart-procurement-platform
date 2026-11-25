@@ -6,12 +6,18 @@
  * 所以模型输出里的 HTML 不会被当成标签执行。
  */
 
+// HTML 元字符转义表：先转义再拼标签，是本渲染器的安全边界
 const ESCAPE: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
 
+/** 转义 HTML 元字符；所有进入 HTML 的模型输出都必须先过这一层 */
 function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, ch => ESCAPE[ch])
 }
 
+/**
+ * 链接白名单：http/https、mailto、站内绝对路径、锚点与相对路径放行，其余回落为 #。
+ * 这样模型输出的 javascript: 之类伪协议不会被渲染成可点击链接。
+ */
 function safeHref(raw: string): string {
   const url = raw.trim()
   if (/^(https?:|mailto:|\/|#)/i.test(url) || /^[\w.-]+(\/|$)/.test(url)) return escapeHtml(url)
@@ -27,6 +33,10 @@ function inline(escaped: string): string {
     .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>')
 }
 
+/**
+ * 渲染表格：表头 + 分隔行 + 数据行；按分隔行里的冒号决定左/中/右对齐。
+ * 数据行缺列补空、多列截断，避免模型列数不一致时单元格错位。
+ */
 function renderTable(header: string, divider: string, rows: string[]): string {
   const cells = (line: string) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(cell => cell.trim())
   const columns = cells(header).length
@@ -45,7 +55,9 @@ function renderTable(header: string, divider: string, rows: string[]): string {
   return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
 }
 
+// 分隔行必须同时含 - 与 |，否则普通含竖线的正文会被误判成表格
 const isTableDivider = (line: string) => /^\s*\|?[\s:-]*-[\s|:-]*\|?\s*$/.test(line) && line.includes('-') && line.includes('|')
+// 表格行的最低要求：含竖线且不止一个字符，放宽以匹配模型的紧凑写法
 const isTableRow = (line: string) => line.includes('|') && line.trim().length > 1
 
 // 模型输出的列表项经常是「-文字」而不是「- 文字」，这里两种都认；
@@ -87,11 +99,16 @@ function splitHeadingText(text: string): { head: string; rest: string } {
   return { head: text.slice(0, cut).trim(), rest: text.slice(cut).trim() }
 }
 
+/** 有序列表项内容：1-2 位数字 + . 或 )，避免把「2026.」这类正文误判 */
 function orderedContent(line: string): string | null {
   const match = line.match(/^\s*\d{1,2}[.)](?![0-9])\s*(.+)$/)
   return match ? match[1] : null
 }
 
+/**
+ * 段落循环的终止条件：下一行若开启新块（标题/代码块/引用/列表/分隔线/表格）就收口。
+ * 表格要看下一行是否为分隔行才能确认，所以额外传入 next。
+ */
 function isBlockStart(line: string, next: string | undefined): boolean {
   if (headingContent(line)) return true
   if (/^\s*(```|>)/.test(line)) return true
@@ -101,6 +118,7 @@ function isBlockStart(line: string, next: string | undefined): boolean {
   return isTableRow(line) && next !== undefined && isTableDivider(next)
 }
 
+// 返回值已做 HTML 转义，可直接 v-html；不支持的语法（图片、HTML 块）按普通文本输出。
 /** 把 Markdown 文本渲染成可直接 v-html 的 HTML 片段 */
 export function renderMarkdown(source: string): string {
   if (!source) return ''

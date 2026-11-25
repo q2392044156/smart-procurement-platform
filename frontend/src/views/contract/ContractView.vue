@@ -5,6 +5,14 @@ import http from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import type { Dict } from '@/types'
 
+/**
+ * 合同管理：供应商合同台账，含生效/到期跟踪与采购订单关联。
+ * 数据来源：GET /contracts（分页）、GET /suppliers（下拉）、POST /contracts、PUT /contracts/{id}、
+ *           POST /contracts/{id}/activate|terminate、DELETE /contracts/{id}。
+ * 权限：contract:view 查看；contract:edit 才显示新建与行内操作。
+ * 关键交互：关键字/状态筛选、分页、新建或编辑弹窗、启用/终止/删除均二次确认。
+ */
+
 const auth = useAuthStore()
 const canEdit = computed(() => auth.can('contract:edit'))
 const rows = ref<Dict[]>([])
@@ -19,6 +27,7 @@ const statusName: Dict = { DRAFT: '草稿', ACTIVE: '生效中', EXPIRED: '已�
 const statusType: Dict = { DRAFT: 'info', ACTIVE: 'success', EXPIRED: 'warning', TERMINATED: 'danger' }
 const typeName: Dict = { FRAMEWORK: '框架协议', PURCHASE: '采购合同', SERVICE: '服务合同', NDA: '保密协议' }
 
+// 并发取合同分页与供应商下拉；供应商只在首次或无缓存时拉取，避免重复请求
 async function load() {
   const [data, supplierRows] = await Promise.all([
     http.get('/contracts', { params: { keyword: filters.keyword || undefined, status: filters.status || undefined, current: page.current, size: page.size } }),
@@ -31,13 +40,16 @@ async function load() {
 
 function search() { page.current = 1; load() }
 
+// 重置表单并清空编辑态，新建与保存成功后可复用
 function resetForm() {
   editingId.value = ''
   Object.assign(form, { name: '', supplierId: '', type: 'PURCHASE', amount: 0, signedDate: '', startDate: '', endDate: '', remark: '' })
 }
 
+// 新建：先清空再开弹窗，避免上一次编辑的残留值被带进来
 function openCreate() { resetForm(); dialog.value = true }
 
+// 编辑：把行数据回填进表单（金额转数值、日期空值转空串），再开弹窗
 function openEdit(row: Dict) {
   editingId.value = row.id
   Object.assign(form, {
@@ -47,6 +59,7 @@ function openEdit(row: Dict) {
   dialog.value = true
 }
 
+// 保存：名称与供应商必填；有编辑 id 走 PUT 否则 POST，成功后关弹窗并刷新
 async function save() {
   if (!form.name?.trim() || !form.supplierId) return ElMessage.warning('请填写合同名称并选择供应商')
   if (editingId.value) await http.put(`/contracts/${editingId.value}`, form)
@@ -56,6 +69,7 @@ async function save() {
   await load()
 }
 
+// 启用：二次确认后调后端，成功后刷新列表；仅草稿态可见
 async function activate(row: Dict) {
   await ElMessageBox.confirm(`确认启用合同“${row.name}”？`, '启用合同', { type: 'warning' })
   await http.post(`/contracts/${row.id}/activate`)
@@ -63,6 +77,7 @@ async function activate(row: Dict) {
   await load()
 }
 
+// 终止：不可恢复，确认文案里明确提示；仅生效中/已到期可见
 async function terminate(row: Dict) {
   await ElMessageBox.confirm(`确认终止合同“${row.name}”？终止后不可恢复。`, '终止合同', { type: 'warning' })
   await http.post(`/contracts/${row.id}/terminate`)
@@ -70,6 +85,7 @@ async function terminate(row: Dict) {
   await load()
 }
 
+// 删除：只允许草稿态，确认后删除并刷新
 async function remove(row: Dict) {
   await ElMessageBox.confirm(`确认删除草稿合同“${row.name}”？`, '删除合同', { type: 'warning' })
   await http.delete(`/contracts/${row.id}`)

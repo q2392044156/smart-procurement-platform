@@ -5,6 +5,13 @@ import http from '@/api/http'
 import type { Dict } from '@/types'
 import { formatQty } from '@/utils/datetime'
 
+/**
+ * 审批中心：待办/已办两个页签，覆盖采购申请与采购订单两类单据。
+ * 数据来源：GET /workflow/tasks、/workflow/tasks/done；预览再按 businessKey 取单据详情。
+ * 权限：workflow:approve（路由 meta.permission 已拦截，页面内不再重复判定）。
+ * 关键交互：抽屉预览单据 → 填写意见后通过/驳回（驳回原因必填）。
+ */
+
 const todo = ref<Dict[]>([])
 const done = ref<Dict[]>([])
 const tab = ref('todo')
@@ -13,10 +20,12 @@ const previewData = ref<Dict>()
 const previewTask = ref<Dict>()
 const previewType = computed(() => String(previewTask.value?.businessKey || '').startsWith('REQUISITION:') ? '采购申请' : '采购订单')
 
+// 并发取待办与已办；任一失败由 http 拦截器提示，本页保持旧数据不抖动
 async function load() {
   ;[todo.value, done.value] = await Promise.all([http.get('/workflow/tasks'), http.get('/workflow/tasks/done')])
 }
 
+// businessKey 形如 REQUISITION:12 / PURCHASE_ORDER:9，转成「采购申请 #12」展示
 function businessName(key: unknown) {
   const value = String(key || '')
   if (value.startsWith('REQUISITION:')) return `采购申请 #${value.split(':')[1]}`
@@ -26,6 +35,7 @@ function businessName(key: unknown) {
 
 function formatTime(value: unknown) { return value ? new Date(String(value)).toLocaleString('zh-CN', { hour12: false }) : '—' }
 
+// 预览：按 businessKey 前缀决定查哪类单据，先取详情再开抽屉，避免抽屉里空白
 async function preview(row: Dict) {
   const [type, id] = String(row.businessKey).split(':')
   previewTask.value = row
@@ -33,6 +43,7 @@ async function preview(row: Dict) {
   previewVisible.value = true
 }
 
+// 审批通过/驳回：意见必填校验交给弹框，成功后关闭预览并刷新待办与已办
 async function decide(row: Dict, action: 'approve' | 'reject') {
   const { value } = await ElMessageBox.prompt(action === 'approve' ? '填写审批意见（可选）' : '填写驳回原因', action === 'approve' ? '通过审批' : '驳回审批', {
     confirmButtonText: action === 'approve' ? '确认通过' : '确认驳回',

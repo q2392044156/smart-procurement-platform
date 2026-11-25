@@ -9,6 +9,9 @@ import java.util.List;
 import java.util.Map;
 import com.procuremind.platform.pojo.row.RequisitionLock;
 
+    // 采购申请与行项目两表的读写映射，SQL 全在 resources/mapper/RequisitionMapper.xml；无 join 型聚合。
+    // lockById 返回 RequisitionLock（record），是提交/取消/删除前的决策读，必须与后续写在同一事务内。
+    // list/countPage/page 都带 scope 片断做行级过滤；softDelete* 全部带 userId 记删除人。
 /** 采购申请的读写映射。SQL 全部在 resources/mapper/RequisitionMapper.xml。 */
 @Mapper
 public interface RequisitionMapper {
@@ -42,6 +45,7 @@ public interface RequisitionMapper {
                      @Param("purpose") String purpose, @Param("budgetAmount") BigDecimal budgetAmount,
                      @Param("userId") Long userId);
 
+    // 与工作流实例号一起写回，便于审批回调按 process_instance_id 定位业务单据。
     int updateStatus(@Param("id") Long id, @Param("status") String status,
                      @Param("processInstanceId") String processInstanceId, @Param("userId") Long userId);
 
@@ -51,5 +55,6 @@ public interface RequisitionMapper {
 
     int softDelete(@Param("id") Long id, @Param("userId") Long userId);
 
+    // 提交前校验行项目物资仍然启用：停用物资不允许再进审批。
     int countEnabledMaterial(@Param("materialId") Long materialId);
 }

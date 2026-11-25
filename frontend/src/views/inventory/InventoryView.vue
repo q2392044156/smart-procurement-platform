@@ -6,6 +6,14 @@ import { useAuthStore } from '@/stores/auth'
 import { formatQty, formatTime } from '@/utils/datetime'
 import type { Dict } from '@/types'
 
+/**
+ * 收货与库存：库存余额、库存流水、收货记录、出库记录四个页签。
+ * 数据来源：/inventory/balances/page、/inventory/ledger/page、/receipts/page、/inventory/issues；
+ *           出库 POST /inventory/issues，下拉来自 /materials 与 /warehouses。
+ * 权限：inventory:view 查看；inventory:issue 才显示「出库/领用」。
+ * 关键交互：关键字检索、分页、收货详情抽屉、出库弹窗（批次/序列号按跟踪方式校验）。
+ */
+
 const auth = useAuthStore()
 const balances=ref<Dict[]>([]),ledger=ref<Dict[]>([]),receipts=ref<Dict[]>([]),issues=ref<Dict[]>([]),tab=ref('balance')
 const warehouses=ref<Dict[]>([]),materials=ref<Dict[]>([])
@@ -17,27 +25,36 @@ const selectedMaterial=computed(()=>materials.value.find(m=>m.id===issueForm.mat
 const keyword=ref('')
 const pages=reactive({balance:{current:1,size:10,total:0},ledger:{current:1,size:20,total:0},receipt:{current:1,size:10,total:0},issue:{current:1,size:10,total:0}})
 
+// 分页取库存余额；lowStock 由后端算好，前端只负责红/绿标签
 async function loadBalances(){
   const r=await http.get('/inventory/balances/page',{params:{keyword:keyword.value,current:pages.balance.current,size:pages.balance.size}})
   balances.value=r.records;pages.balance.total=r.total
 }
+// 流水按时间倒序分页，结存取后端算好的 balanceAfter，前端不做累加
 async function loadLedger(){
   const r=await http.get('/inventory/ledger/page',{params:{keyword:keyword.value,current:pages.ledger.current,size:pages.ledger.size}})
   ledger.value=r.records;pages.ledger.total=r.total
 }
+// 收货记录按收货单号/订单号检索，关键字复用顶部同一个输入框
 async function loadReceipts(){
   const r=await http.get('/receipts/page',{params:{orderNo:keyword.value,current:pages.receipt.current,size:pages.receipt.size}})
   receipts.value=r.records;pages.receipt.total=r.total
 }
+// 出库记录：含批次、用途与领用人，用于事后追溯
 async function loadIssues(){
   const r=await http.get('/inventory/issues',{params:{keyword:keyword.value,current:pages.issue.current,size:pages.issue.size}})
   issues.value=r.records;pages.issue.total=r.total
 }
+// 四个页签首页数据一起拉，切页签不再触发请求，减少往返
 async function load(){await Promise.all([loadBalances(),loadLedger(),loadReceipts(),loadIssues()])}
+// 检索时把所有页签重置到第一页，避免某页停留在越界页码上出现空列表
 function search(){for(const p of Object.values(pages)) p.current=1;load()}
+// 收货详情：先取明细再开抽屉，序列号字段在抽屉里再解析展示
 async function openReceipt(row:Dict){detail.value=await http.get(`/receipts/${row.id}`);drawer.value=true}
+// 序列号兼容数组与 JSON 字符串两种返回形态，解析失败按原文展示
 function serialText(value:unknown){if(!value)return '—';if(Array.isArray(value))return value.join('、');try{return JSON.parse(String(value)).join('、')}catch{return String(value)}}
 
+// 出库弹窗：首次打开才拉仓库与物资下拉，默认选中第一个启用的仓库
 async function openIssue(){
   if(!warehouses.value.length){
     ;[warehouses.value,materials.value]=await Promise.all([http.get('/warehouses'),http.get('/materials')])
@@ -46,6 +63,8 @@ async function openIssue(){
   issueDialog.value=true
 }
 
+// 提交出库：仓库/物资/用途必填，再按跟踪方式校验——序列号数量须等于出库数量、
+// 批次物资必填批次号；成功后就地关闭弹窗并刷新四个页签，失败保留弹窗便于修改。
 async function submitIssue(){
   if(!issueForm.warehouseId||!issueForm.materialId) return ElMessage.warning('请选择仓库与物资')
   if(!issueForm.purpose?.trim()) return ElMessage.warning('请填写领用用途')

@@ -27,6 +27,16 @@ import com.procuremind.platform.pojo.request.ReceiptRequest;
 import com.procuremind.platform.pojo.row.PurchaseOrderStatus;
 import com.procuremind.platform.pojo.row.ReceiptItemLock;
 
+/**
+ * 收货入库：按订单明细收货，增加已收数量与库存余额，登记批次/序列号并写不可变流水，最后回写订单状态。
+ *
+ * <p>幂等：入口必须带 Idempotency-Key。先用唯一键“占位”，冲突即视为重复请求——已完成则原样重放上次响应，
+ * 处理中则返回 409，避免重复入库。幂等键与流水同一事务落库，回滚后键也一并回滚，可安全重试。
+ *
+ * <p>并发控制：订单表、订单明细、库存余额都先加行锁或做条件更新；余额更新用 version 乐观锁重试 3 次。
+ * 追踪模式（SERIAL/BATCH/NONE）与出库共用同一套语义。依赖 ReceiptMapper、ObjectMapper（序列号 JSON）、
+ * DocumentNumberService（GRN 单号）。</p>
+ */
 @Service
 public class ReceiptService {
     private final ReceiptMapper mapper;
@@ -39,6 +49,12 @@ public class ReceiptService {
         this.numbers = numbers;
     }
 
+    /**
+     * 收货主流程：占幂等键 → 锁订单并校验状态（仅已审批/部分收货可收）→ 校验仓库与明细行不重复
+     * → 落收货单 → 逐行锁订单明细、校验剩余量与追踪信息、增已收数量、增余额、登记批次/序列号、写流水
+     * → 重算订单状态（全部收完 RECEIVED，否则 PARTIALLY_RECEIVED）→ 把响应写入幂等记录。
+     * 所有步骤同一事务，任一行失败整单回滚，不会出现“收了一半”的收货单。
+     */
     @Transactional
     public Map<String, Object> receive(String key, ReceiptRequest r) {
         if (key == null || key.isBlank() || key.length() > 100) {
@@ -46,6 +62,7 @@ public class ReceiptService {
         }
         Long user = SecurityUtils.currentUser().id();
         try {
+            // 先占位写幂等键：唯一键冲突是“重复请求”的唯一可靠判据，冲突后再区分已完成与处理中。
             mapper.insertIdempotency(key, user, "CREATE_RECEIPT");
         } catch (DuplicateKeyException e) {
             Map<String, Object> row = mapper.findIdempotency(key, user, "CREATE_RECEIPT");
@@ -129,6 +146,10 @@ public class ReceiptService {
         return response;
     }
 
+    /**
+     * 增加库存余额：先补一行（不存在则插 0），再循环“读 → 加 → 带 version 条件更新”，最多重试 3 次。
+     * 之所以自己重试而不加行锁：收货是热点写，乐观锁冲突时重试比排队等待更划算；3 次仍冲突按 409 让调用方重试。
+     */
     private BigDecimal addBalance(Long warehouse, Long material, BigDecimal quantity, Long user) {
         mapper.insertBalance(warehouse, material, user);
         for (int i = 0; i < 3; i++) {
@@ -141,6 +162,10 @@ public class ReceiptService {
         throw new BusinessException(HttpStatus.CONFLICT, "库存被并发更新，请重试");
     }
 
+    /**
+     * 按物资追踪模式校验收货行：BATCH 必须有批次号；SERIAL 要求数量为整数、序列号条数一致、非空、不重复。
+     * 与 IssueService 的校验规则对称，出库时还会再查一次“序列号是否存在且未出库”。
+     */
     private void validateTracking(String mode, ReceiptItem item) {
         if ("BATCH".equals(mode) && (item.batchNo() == null || item.batchNo().isBlank())) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "批次物资必须填写批次号");
@@ -161,6 +186,7 @@ public class ReceiptService {
         }
     }
 
+    /** 统一 JSON 序列化（序列号列表存单列、幂等响应存快照）；失败属程序错误，包成 IllegalStateException 回滚。 */
     private String write(Object value) {
         try {
             return value == null ? null : json.writeValueAsString(value);

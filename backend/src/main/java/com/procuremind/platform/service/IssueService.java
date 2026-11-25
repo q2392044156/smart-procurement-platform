@@ -26,6 +26,10 @@ import com.procuremind.platform.pojo.row.BalanceLock;
  * 出库/领用：扣减库存余额、批次与序列号，并向不可变流水写入 OUT 方向记录。
  *
  * <p>与收货对称：收货只增、出库只减，余额使用行锁更新，流水只追加不修改。</p>
+ *
+ * <p>三种追踪模式（物资的 tracking_mode）：SERIAL 逐序列号出库并校验数量为整数、条数一致、不重复；
+ * BATCH 必须带批次号并按批次扣减；NONE 只动总余额。扣减全部用条件更新（影响行数 0 即视为不足），
+ * 任意一步失败整个事务回滚，不会留下半扣状态。出库单号走 DocumentNumberService 的 OUT 前缀。</p>
  */
 @Service
 public class IssueService {
@@ -37,6 +41,11 @@ public class IssueService {
         this.numbers = numbers;
     }
 
+    /**
+     * 出库主流程：校验仓库与物资启用状态 → 按追踪模式校验入参 → 取 OUT 单号并插入主表 → 逐序列号出库
+     * → 扣批次 → 行锁扣减总余额 → 追加 OUT 流水。任一步影响行数为 0 都按冲突处理并整体回滚。
+     * 部门取当前用户的部门，请求里显式传了则以请求为准（代领场景）。
+     */
     @Transactional
     public Map<String, Object> issue(IssueRequest request) {
         var user = SecurityUtils.currentUser();
@@ -91,6 +100,7 @@ public class IssueService {
         return result;
     }
 
+    /** 出库单分页：页大小夹在 1~100，关键字为空时用 "%%" 匹配全部。 */
     public Map<String, Object> page(String keyword, int current, int size) {
         int page = Math.max(current, 1);
         int pageSize = Math.min(Math.max(size, 1), 100);
@@ -106,12 +116,18 @@ public class IssueService {
         return result;
     }
 
+    /** 出库单详情，查不到按 404；接口层不再二次组装明细。 */
     public Map<String, Object> detail(Long id) {
         Map<String, Object> issue = mapper.findDetail(id);
         if (issue == null) throw new BusinessException(HttpStatus.NOT_FOUND, "出库单不存在");
         return issue;
     }
 
+    /**
+     * 扣减总余额：先 SELECT ... FOR UPDATE 锁住余额行，再在锁内比较数量（锁后才读到的值才是最新值，
+     * 但仍要判不足，因为并发出库可能已把余额降到本次需求之下）；更新时带 version 做乐观校验，
+     * 影响行数不为 1 直接抛异常由事务回滚。返回扣减后的余额，用于写流水与响应。
+     */
     private BigDecimal decrementBalance(Long warehouseId, Long materialId, BigDecimal quantity, Long user) {
         BalanceLock row = mapper.lockBalance(warehouseId, materialId);
         if (row == null) throw new BusinessException(HttpStatus.CONFLICT, "该仓库没有此物资的库存记录");
@@ -124,12 +140,18 @@ public class IssueService {
         return next;
     }
 
+    /**
+     * 序列号列表以 JSON 文本存入流水/主表的单个列（便于追溯，不做展开查询）；空列表存 null 而不是 "[]"。
+     * 序列化失败属程序错误，包成 IllegalStateException 触发事务回滚。
+     */
     private String json(List<String> serials) {
         try { return serials.isEmpty() ? null : new ObjectMapper().writeValueAsString(serials); }
         catch (Exception e) { throw new IllegalStateException(e); }
     }
 
+    /** 空串归一化为 null，避免库里出现空字符串与 NULL 两种“没填”。 */
     private String blank(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+    /** 入参类错误统一走 400，避免各处重复写 HttpStatus。 */
     private BusinessException badRequest(String message) { return new BusinessException(HttpStatus.BAD_REQUEST, message); }
 
     

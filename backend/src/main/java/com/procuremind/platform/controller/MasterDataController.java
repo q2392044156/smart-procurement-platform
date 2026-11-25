@@ -16,6 +16,11 @@ import com.procuremind.platform.pojo.request.UnitRequest;
 import com.procuremind.platform.pojo.request.BrandRequest;
 import com.procuremind.platform.pojo.request.MasterDataStatusRequest;
 
+/**
+ * 主数据维护：物资分类、物资、仓库、计量单位、品牌，路由前缀 /api/v1/master-data。
+ * 类级 masterdata:view 覆盖全部读；写操作按子域抬到 masterdata:<子域>:edit，物资分类与物资还接受粗粒度的
+ * masterdata:edit，仓库/单位/品牌则只认子域码。刻意不做：不做编码生成、不做引用检查，也不碰库存数量。
+ */
 @RestController
 @RequestMapping("/api/v1")
 @PreAuthorize("hasAuthority('masterdata:view')")
@@ -23,6 +28,7 @@ public class MasterDataController {
     private final MasterDataService service;
     public MasterDataController(MasterDataService service) { this.service=service; }
 
+    // 物资分类：读需 masterdata:view；写需 masterdata:edit 或 masterdata:category:edit，删除是软删除。
     @GetMapping("/material-categories")
     public ApiResponse<List<Map<String,Object>>> categories() {
         return ApiResponse.ok(service.categories());
@@ -34,6 +40,7 @@ public class MasterDataController {
     }
     @PutMapping("/material-categories/{id}") @PreAuthorize("hasAnyAuthority('masterdata:edit','masterdata:category:edit')") public ApiResponse<Void> updateCategory(@PathVariable Long id,@Valid @RequestBody MaterialCategoryRequest r){service.updateCategory(id,r);return ApiResponse.ok(null);}
     @DeleteMapping("/material-categories/{id}") @PreAuthorize("hasAnyAuthority('masterdata:edit','masterdata:category:edit')") public ApiResponse<Void> deleteCategory(@PathVariable Long id){service.deleteCategory(id);return ApiResponse.ok(null);}
+    // 物资：读 masterdata:view（列表/详情/分页）；写需 masterdata:material:edit，启停用走 PATCH 状态端点。
     @GetMapping("/materials")
     public ApiResponse<List<Map<String,Object>>> materials(
             @RequestParam(required=false) String keyword,
@@ -63,6 +70,7 @@ public class MasterDataController {
     @PatchMapping("/materials/{id}/status") @PreAuthorize("hasAnyAuthority('masterdata:edit','masterdata:material:edit')") public ApiResponse<Void> materialStatus(@PathVariable Long id,@Valid @RequestBody MasterDataStatusRequest r){service.setMaterialStatus(id,r.enabled());return ApiResponse.ok(null);}
     @DeleteMapping("/materials/{id}") @PreAuthorize("hasAnyAuthority('masterdata:edit','masterdata:material:edit')") public ApiResponse<Void> deleteMaterial(@PathVariable Long id){service.deleteMaterial(id);return ApiResponse.ok(null);}
 
+    // 仓库：读 masterdata:view；写只需 masterdata:warehouse:edit（不再叠加 masterdata:edit）。
     @GetMapping("/warehouses") public ApiResponse<List<Map<String,Object>>> warehouses(){return ApiResponse.ok(service.warehouses());}
     @GetMapping("/warehouses/{id}") public ApiResponse<Map<String,Object>> warehouse(@PathVariable Long id){return ApiResponse.ok(service.warehouse(id));}
     @PostMapping("/warehouses") @PreAuthorize("hasAuthority('masterdata:warehouse:edit')") public ApiResponse<Map<String,Object>> createWarehouse(@Valid @RequestBody WarehouseRequest r){return ApiResponse.ok(Map.of("id",service.createWarehouse(r)));}
@@ -70,6 +78,7 @@ public class MasterDataController {
     @PatchMapping("/warehouses/{id}/status") @PreAuthorize("hasAuthority('masterdata:warehouse:edit')") public ApiResponse<Void> warehouseStatus(@PathVariable Long id,@Valid @RequestBody MasterDataStatusRequest r){service.setWarehouseStatus(id,r.enabled());return ApiResponse.ok(null);}
     @DeleteMapping("/warehouses/{id}") @PreAuthorize("hasAuthority('masterdata:warehouse:edit')") public ApiResponse<Void> deleteWarehouse(@PathVariable Long id){service.deleteWarehouse(id);return ApiResponse.ok(null);}
 
+    // 计量单位：读 masterdata:view；写需 masterdata:unit:edit，单位参与数量换算，改动会影响历史展示。
     @GetMapping("/units") public ApiResponse<List<Map<String,Object>>> units(){return ApiResponse.ok(service.units());}
     @GetMapping("/units/{id}") public ApiResponse<Map<String,Object>> unit(@PathVariable Long id){return ApiResponse.ok(service.unit(id));}
     @PostMapping("/units") @PreAuthorize("hasAuthority('masterdata:unit:edit')") public ApiResponse<Map<String,Object>> createUnit(@Valid @RequestBody UnitRequest r){return ApiResponse.ok(Map.of("id",service.createUnit(r)));}
@@ -77,6 +86,7 @@ public class MasterDataController {
     @PatchMapping("/units/{id}/status") @PreAuthorize("hasAuthority('masterdata:unit:edit')") public ApiResponse<Void> unitStatus(@PathVariable Long id,@Valid @RequestBody MasterDataStatusRequest r){service.setUnitStatus(id,r.enabled());return ApiResponse.ok(null);}
     @DeleteMapping("/units/{id}") @PreAuthorize("hasAuthority('masterdata:unit:edit')") public ApiResponse<Void> deleteUnit(@PathVariable Long id){service.deleteUnit(id);return ApiResponse.ok(null);}
 
+    // 品牌：读 masterdata:view；写需 masterdata:brand:edit，与分类同构；引用检查统一在 MasterDataService。
     @GetMapping("/brands") public ApiResponse<List<Map<String,Object>>> brands(){return ApiResponse.ok(service.brands());}
     @GetMapping("/brands/{id}") public ApiResponse<Map<String,Object>> brand(@PathVariable Long id){return ApiResponse.ok(service.brand(id));}
     @PostMapping("/brands") @PreAuthorize("hasAuthority('masterdata:brand:edit')") public ApiResponse<Map<String,Object>> createBrand(@Valid @RequestBody BrandRequest r){return ApiResponse.ok(Map.of("id",service.createBrand(r)));}

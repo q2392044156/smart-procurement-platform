@@ -4,14 +4,24 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { DataAnalysis, Box, Collection, OfficeBuilding, Document, Stamp, ShoppingCart, Tickets, Wallet, Files, MagicStick, Reading, Setting, Fold, Expand } from '@element-plus/icons-vue'
 
+/**
+ * 主框架布局：左侧导航 + 顶栏 + 内容区（router-view），所有业务页面都挂在这里。
+ * 权限：菜单按 permission 过滤，与 router 的 meta.permission 使用同一套编码。
+ * 关键交互：折叠/展开导航、顶栏展示当前用户与角色、退出登录后回登录页。
+ */
+
 const auth=useAuthStore(),route=useRoute(),router=useRouter(),collapsed=ref(false)
+// 菜单表：[路径, 标题, 权限, 图标]；数组形式的权限表示任一满足即可见
 const menus=[
   ['/dashboard','经营看板','dashboard:view',DataAnalysis],['/materials','物资主数据','masterdata:view',Box],['/base-data','基础资料','masterdata:view',Collection],['/suppliers','供应商管理','supplier:view',OfficeBuilding],
   ['/requisitions','采购申请','requisition:view',Document],['/workflow','审批中心','workflow:approve',Stamp],['/orders','采购订单','purchaseorder:view',ShoppingCart],
   ['/inventory','收货与库存','inventory:view',Tickets],['/budgets','部门预算','budget:view',Wallet],['/contracts','合同管理','contract:view',Files],['/knowledge','知识库','kb:view',Reading],['/assistant','AI采购助手','agent:use',MagicStick],['/system','系统与审计',['system:user:view','audit:view'],Setting]
 ] as const
+// 权限判定与守卫一致：字符串直接查，数组任一命中即放行
 function allowed(permission:string|readonly string[]){return typeof permission==='string'?auth.can(permission):permission.some(p=>auth.can(p))}
+// 只渲染有权限的菜单，避免用户点到会被守卫弹回的入口
 const visible=computed(()=>menus.filter(m=>allowed(m[2])))
+// 退出登录：先清后端会话再清本地，最后 replace 登录页，避免后退键回到业务页
 async function logout(){await auth.logout();router.replace('/login')}
 </script>
 <template>

@@ -8,12 +8,12 @@
           and year(created_at)=year(utc_timestamp())
     </select>
 
-    <select id="activeOrders" resultType="long">
+    <select id="activeOrders" resultType="int">
         select count(*) from po_purchase_order
         where deleted=0 and status in ('APPROVED','PARTIALLY_RECEIVED')
     </select>
 
-    <select id="lowStockCount" resultType="long">
+    <select id="lowStockCount" resultType="int">
         select count(*) from inv_balance b join md_material m on m.id=b.material_id
         where b.deleted=0 and b.quantity&lt;m.min_stock
     </select>

@@ -7,6 +7,9 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
+    // 五个子域共用本接口，SQL 全在 resources/mapper/MasterDataMapper.xml；无行锁、无 record 决策读。
+    // 删除一律“先 count 引用、再 softDelete”，各组的 count* 就是给 Service 拼删除前置条件用的。
+    // 动态属性按分类以 JSON 存选项，读写都只在 attributesJson/optionsJson 字符串上传递，本层不解析。
 /** 主数据（分类/动态属性/物资/仓库/单位/品牌）的读写映射。SQL 全部在 resources/mapper/MasterDataMapper.xml。 */
 @Mapper
 public interface MasterDataMapper {
@@ -32,6 +35,7 @@ public interface MasterDataMapper {
     int countCategoryById(@Param("id") Long id);
 
     /** 上级分类的 parent_id，可为空；供循环检测逐级上溯。 */
+    // 供上级循环检测逐级上溯；countCategoryChildren 阻止删除仍有子分类的节点。
     Long findParentId(@Param("id") Long id);
 
     void deleteCategoryAttributes(@Param("categoryId") Long categoryId);
@@ -80,9 +84,11 @@ public interface MasterDataMapper {
                         @Param("minStock") BigDecimal minStock, @Param("attributesJson") String attributesJson,
                         @Param("userId") Long userId);
 
+    // updateXxxStatus 只改 enabled，与 softDelete 分离：停用不等于删除。
     void updateMaterialStatus(@Param("id") Long id, @Param("enabled") boolean enabled, @Param("userId") Long userId);
 
     /* 物资删除前的引用计数，逐表与原来一致。 */
+    // 物资与仓库各有五个删除前引用计数，与物理表一一对应，缺一个就会漏判。
     int countRequisitionItemByMaterial(@Param("materialId") Long materialId);
 
     int countPurchaseOrderItemByMaterial(@Param("materialId") Long materialId);

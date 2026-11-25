@@ -5,6 +5,14 @@ import http from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import type { Dict } from '@/types'
 
+/**
+ * 知识库：制度、流程、合同与供应商资料的归档、分发与版本管理。
+ * 数据来源：/kb/documents（列表/详情/状态/删除/下载/版本）、/kb/uploads/presign 直传，
+ *           可见范围授权还需 /departments、/users、/roles。
+ * 权限：kb:view 查看；kb:manage 才能上传、发布、归档与维护版本。
+ * 关键交互：筛选分页、上传新文档（先传对象存储再建记录）、详情抽屉内上传新版本。
+ */
+
 const auth = useAuthStore()
 const canManage = computed(() => auth.can('kb:manage'))
 
@@ -21,6 +29,7 @@ const categories = [
   { code: 'MANUAL', name: '产品手册' }, { code: 'TEMPLATE', name: '模板表单' },
   { code: 'OTHER', name: '其他资料' }
 ]
+// 分类字典：与后端枚举保持一致，筛选项与列表展示共用这一份
 const categoryName: Dict = Object.fromEntries(categories.map(c => [c.code, c.name]))
 const statusName: Dict = { DRAFT: '草稿', PUBLISHED: '已发布', ARCHIVED: '已归档' }
 const statusType: Dict = { DRAFT: 'info', PUBLISHED: 'success', ARCHIVED: 'warning' }
@@ -60,6 +69,7 @@ const versionFile = ref<File>()
 const versionNote = ref('')
 const uploadingVersion = ref(false)
 
+// 分页查询；loading 只包住列表，筛选条件变化时表格不整体闪烁
 async function load() {
   loading.value = true
   try {
@@ -104,11 +114,13 @@ async function openEdit(row: Dict) {
 function onFileChange(event: Event) { selectedFile.value = (event.target as HTMLInputElement).files?.[0] || undefined }
 function onVersionFileChange(event: Event) { versionFile.value = (event.target as HTMLInputElement).files?.[0] || undefined }
 
+// 按扩展名推 MIME：后端只放行白名单类型，未知扩展名返回空串由调用方拦下
 function mimeOf(file: File) {
   const ext = file.name.split('.').pop()?.toLowerCase() || ''
   return mimeByExtension[ext] || ''
 }
 
+// 附件上传：先换预签名地址再 PUT 直传对象存储，返回 fileId 供后续建记录
 async function uploadToStorage(file: File) {
   const contentType = mimeOf(file)
   if (!contentType) throw new Error('仅支持 PDF、Word、Excel、PPT、TXT、Markdown 文件')
@@ -121,6 +133,7 @@ async function uploadToStorage(file: File) {
 function addAcl() { form.acl.push({ subjectType: 'ROLE', subjectKey: '' }) }
 function removeAcl(index: string | number) { form.acl.splice(Number(index), 1) }
 
+// 保存：编辑只更新元数据；新建必须先选文件，上传成功后才建文档记录（草稿态）
 async function save() {
   if (!form.title?.trim()) return ElMessage.warning('请填写文档标题')
   if (form.visibility === 'CUSTOM' && !form.acl.length) return ElMessage.warning('指定可见范围时至少添加一条授权')
@@ -151,6 +164,7 @@ async function openDetail(row: Dict) {
   detailVisible.value = true
 }
 
+// 状态流转：草稿→发布、发布→归档、归档→重新发布，均需二次确认
 async function changeStatus(row: Dict, status: string) {
   const label = statusName[status]
   await ElMessageBox.confirm(`确认将“${row.title}”变更为「${label}」？`, '状态确认', { type: 'warning' })
@@ -173,6 +187,7 @@ async function download(row: Dict) {
   window.open(result.downloadUrl, '_blank', 'noopener')
 }
 
+// 上传新版本：先直传文件再调版本接口，成功后刷新详情与列表里的当前版本号
 async function addVersion() {
   if (!detail.value || !versionFile.value) return ElMessage.warning('请选择新版本文件')
   uploadingVersion.value = true
@@ -191,6 +206,7 @@ async function addVersion() {
   }
 }
 
+// 文件大小按 B/KB/MB 三档展示，空值回退为「—」
 function formatSize(value: unknown) {
   const size = Number(value || 0)
   if (!size) return '—'
@@ -207,6 +223,7 @@ function formatTime(value: unknown) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
+// 首屏：先取列表，再按权限补拉部门/用户/角色；补拉失败只影响「指定可见」下拉
 onMounted(async () => {
   await load()
   try { departments.value = await http.get('/departments') } catch { departments.value = [] }

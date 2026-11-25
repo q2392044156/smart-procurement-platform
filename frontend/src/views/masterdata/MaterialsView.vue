@@ -5,6 +5,13 @@ import http from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import type { Dict } from '@/types'
 
+/**
+ * 物资主数据：物资档案（分页）与「分类 + 动态属性」两个页签。
+ * 数据来源：/materials/page、/material-categories、/units、/brands；写操作按 REST 约定。
+ * 权限：masterdata:material:edit / masterdata:category:edit，另有 masterdata:edit 兜底。
+ * 关键交互：搜索分页、物资新增编辑（属性随分类变化）、分类树维护、启停与删除。
+ */
+
 const auth = useAuthStore()
 const rows = ref<Dict[]>([])
 const page = reactive({ current: 1, size: 10, total: 0 })
@@ -24,6 +31,7 @@ const selectedCategory = computed(() => categories.value.find(x => x.id === Stri
 const trackingName: Dict = { QUANTITY: '数量', BATCH: '批次', SERIAL: '序列号' }
 const trackingType: Dict = { QUANTITY: 'info', BATCH: 'warning', SERIAL: 'success' }
 
+// 分类是扁平数组，这里按 parentId 组装成树，交给 el-table 的 row-key 展开
 const categoryTree = computed(() => {
   const nodes = new Map<string, Dict>()
   categories.value.forEach(item => nodes.set(item.id, { ...item, children: [] }))
@@ -36,6 +44,7 @@ const categoryTree = computed(() => {
   return roots
 })
 
+// 四个接口并发：列表分页 + 分类/单位/品牌下拉，供弹窗与筛选项使用
 async function load() {
   const [pageData, categoryRows, unitRows, brandRows] = await Promise.all([
     http.get('/materials/page', { params: { keyword: keyword.value, current: page.current, size: page.size } }),
@@ -48,6 +57,7 @@ async function load() {
   brands.value = brandRows
 }
 
+// 打开物资弹窗：编辑时回填并把 attributes 的 JSON 字符串解析成对象，新增时默认数量跟踪
 async function openMaterial(row?: Dict) {
   editingMaterialId.value = row?.id || ''
   loadingMaterial.value = true
@@ -57,6 +67,7 @@ async function openMaterial(row?: Dict) {
   materialDialog.value = true
 }
 
+// 保存物资：编码/名称/分类/单位必填，成功后关弹窗并刷新列表与分类计数
 async function saveMaterial() {
   if (!form.code.trim() || !form.name.trim() || !form.categoryId || !form.unitId) {
     ElMessage.warning('请完整填写物资编码、名称、分类和单位')
@@ -69,16 +80,19 @@ async function saveMaterial() {
   await load()
 }
 
+// 打开分类弹窗：编辑时把属性 options 转成逗号分隔文本，方便表格里直接改
 function openCategory(row?: Dict) {
   editingCategoryId.value = row?.id || ''
   Object.assign(categoryForm, row ? { parentId: row.parentId || null, code: row.code, name: row.name, description: row.description || '', sortOrder: row.sortOrder || 0, attributes: (row.attributes || []).map((item: Dict) => ({ ...item, optionsText: typeof item.options === 'string' ? JSON.parse(item.options || '[]').join('，') : (item.options || []).join('，') })) } : { parentId: null, code: '', name: '', description: '', sortOrder: 0, attributes: [] })
   categoryDialog.value = true
 }
 
+// 追加一条动态属性定义，排序号取当前条数 + 1
 function addAttribute() {
   categoryForm.attributes.push({ code: '', name: '', valueType: 'TEXT', required: false, optionsText: '', sortOrder: categoryForm.attributes.length + 1 })
 }
 
+// 保存分类：ENUM 类型把逗号分隔文本转回数组，其余类型的 options 置空
 async function saveCategory() {
   if (!categoryForm.code.trim() || !categoryForm.name.trim()) {
     ElMessage.warning('分类编码和名称不能为空')
@@ -98,6 +112,7 @@ async function saveCategory() {
   await load()
 }
 
+// 启停物资：二次确认后 PATCH 状态；停用后不可再被新单据引用
 async function toggleMaterial(row: Dict) {
   await ElMessageBox.confirm(`确认${row.enabled ? '停用' : '启用'}物资“${row.name}”吗？`, '物资状态', { type: 'warning' })
   await http.patch(`/materials/${row.id}/status`, { enabled: !row.enabled })
@@ -105,6 +120,7 @@ async function toggleMaterial(row: Dict) {
   await load()
 }
 
+// 删除物资：已有业务记录时后端拒绝，错误由 http 拦截器统一提示
 async function removeMaterial(row: Dict) {
   await ElMessageBox.confirm(`确认删除物资“${row.name}”吗？已有业务记录的物资将被后端拒绝删除。`, '删除物资', { type: 'warning' })
   await http.delete(`/materials/${row.id}`)

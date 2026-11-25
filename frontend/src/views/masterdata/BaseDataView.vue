@@ -5,6 +5,13 @@ import http from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import type { Dict } from '@/types'
 
+/**
+ * 基础资料：仓库、计量单位、品牌三类主数据的维护，三个页签共用一套增改停删逻辑。
+ * 数据来源：GET /warehouses、/units、/brands；写操作按 kind 拼 /{kind} 与 /{kind}/{id}。
+ * 权限：masterdata:warehouse:edit、masterdata:unit:edit、masterdata:brand:edit 分项控制。
+ * 关键交互：新增/编辑弹窗、启停（二次确认）、删除（被业务引用时后端拒绝并提示）。
+ */
+
 const auth = useAuthStore()
 const tab = ref('warehouses')
 const warehouses = ref<Dict[]>([])
@@ -20,16 +27,19 @@ const warehouseForm = reactive<Dict>({ code: '', name: '', address: '', manager:
 const unitForm = reactive<Dict>({ code: '', name: '', precisionScale: 0 })
 const brandForm = reactive<Dict>({ code: '', name: '' })
 
+// 三个接口并发拉取，任一失败由拦截器提示；页签切换不重新请求
 async function load() {
   ;[warehouses.value, units.value, brands.value] = await Promise.all([http.get('/warehouses'), http.get('/units'), http.get('/brands')])
 }
 
+// 打开仓库弹窗：传 row 为编辑（回填），不传为新增（清空表单）
 function openWarehouse(row?: Dict) {
   editingWarehouseId.value = row?.id || ''
   Object.assign(warehouseForm, row ? { code: row.code, name: row.name, address: row.address || '', manager: row.manager || '' } : { code: '', name: '', address: '', manager: '' })
   warehouseDialog.value = true
 }
 
+// 保存仓库：编码名称必填，有编辑 id 走 PUT 否则 POST，成功后刷新列表
 async function saveWarehouse() {
   if (!warehouseForm.code || !warehouseForm.name) { ElMessage.warning('仓库编码和名称不能为空'); return }
   if (editingWarehouseId.value) await http.put(`/warehouses/${editingWarehouseId.value}`, warehouseForm)
@@ -39,6 +49,7 @@ async function saveWarehouse() {
   await load()
 }
 
+// 单位与品牌弹窗同构：新增清空、编辑回填，precisionScale 统一转数值
 function openUnit(row?: Dict) {
   editingUnitId.value = row?.id || ''
   Object.assign(unitForm, row ? { code: row.code, name: row.name, precisionScale: Number(row.precisionScale) } : { code: '', name: '', precisionScale: 0 })
@@ -69,6 +80,7 @@ async function saveBrand() {
   await load()
 }
 
+// 启停：二次确认后 PATCH 状态并刷新；已被引用的资料只能停用，不能删除
 async function toggle(kind: 'warehouses'|'units'|'brands', row: Dict) {
   await ElMessageBox.confirm(`确认${row.enabled ? '停用' : '启用'}“${row.name}”吗？`, '状态变更', { type: 'warning' })
   await http.patch(`/${kind}/${row.id}/status`, { enabled: !row.enabled })
@@ -76,6 +88,7 @@ async function toggle(kind: 'warehouses'|'units'|'brands', row: Dict) {
   await load()
 }
 
+// 删除：确认文案里说明「存在业务引用时后端将拒绝」，失败由拦截器统一提示
 async function remove(kind: 'warehouses'|'units'|'brands', row: Dict) {
   await ElMessageBox.confirm(`确认删除“${row.name}”吗？存在业务引用时后端将拒绝删除。`, '删除确认', { type: 'warning' })
   await http.delete(`/${kind}/${row.id}`)

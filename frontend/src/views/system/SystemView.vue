@@ -5,6 +5,13 @@ import http from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 import type { Dict } from '@/types'
 
+/**
+ * 系统与审计：用户、组织架构、角色与权限、操作审计五个页签。
+ * 数据来源：/users、/departments、/roles、/permissions（需 system:user:view）、/audits。
+ * 权限：system:user:*、system:department:edit、system:role:edit 逐项控制按钮，审计单独授权。
+ * 关键交互：用户增改停删与重置密码、部门树维护、角色数据范围与权限勾选、审计只读。
+ */
+
 const auth = useAuthStore()
 const users = ref<Dict[]>([])
 const departments = ref<Dict[]>([])
@@ -25,6 +32,7 @@ const userForm = reactive<Dict>({ username: '', password: '', displayName: '', d
 const departmentForm = reactive<Dict>({ parentId: null, code: '', name: '', sortOrder: 0 })
 const roleForm = reactive<Dict>({ code: '', name: '', dataScope: 'SELF', permissionIds: [] })
 
+// 部门扁平数组按 parentId 组装成树，供 row-key 表格展开
 const departmentTree = computed(() => {
   const nodes = new Map<string, Dict>()
   departments.value.forEach(item => nodes.set(item.id, { ...item, children: [] }))
@@ -37,11 +45,13 @@ const departmentTree = computed(() => {
   return roots
 })
 
+// 权限按 MENU 分组，子项通过 parentCode 归到菜单下，供角色弹窗勾选
 const permissionGroups = computed(() => permissions.value.filter(item => item.type === 'MENU').map(menu => ({
   menu,
   children: permissions.value.filter(item => item.parentCode === menu.code)
 })))
 
+// 按权限分段加载：无 system:user:view 时只拉审计，避免无权限接口整页报错
 async function load() {
   if (canViewSystem.value) {
     const result = await Promise.all([http.get('/users'), http.get('/departments'), http.get('/roles'), http.get('/permissions')])
@@ -62,6 +72,7 @@ function openUser(row?: Dict) {
   userDialog.value = true
 }
 
+// 保存用户：新建必须给初始密码，编辑不传密码；成功后刷新列表
 async function saveUser() {
   if (!userForm.username || !userForm.displayName || !userForm.departmentId || !userForm.roleIds.length || (!editingUserId.value && !userForm.password)) {
     ElMessage.warning('请完整填写用户信息并至少分配一个角色')
@@ -83,6 +94,7 @@ async function toggleUser(row: Dict) {
   await load()
 }
 
+// 重置密码：前端先按复杂度正则拦一次；成功后后端会撤销该用户已有刷新令牌
 async function resetPassword(row: Dict) {
   const result = await ElMessageBox.prompt(`请输入“${row.displayName}”的新密码`, '重置密码', {
     inputType: 'password', inputPlaceholder: '至少8位，包含大小写、数字和特殊字符',
@@ -106,6 +118,7 @@ function openDepartment(row?: Dict, parentId?: string) {
   departmentDialog.value = true
 }
 
+// 保存部门：编码名称必填；上级下拉排除自己，避免形成环
 async function saveDepartment() {
   if (!departmentForm.code || !departmentForm.name) { ElMessage.warning('部门编码和名称不能为空'); return }
   if (editingDepartmentId.value) await http.put(`/departments/${editingDepartmentId.value}`, departmentForm)
@@ -135,6 +148,7 @@ function openRole(row?: Dict) {
   roleDialog.value = true
 }
 
+// 保存角色：编码名称必填，数据范围与权限 ID 一起提交
 async function saveRole() {
   if (!roleForm.code || !roleForm.name) { ElMessage.warning('角色编码和名称不能为空'); return }
   if (editingRoleId.value) await http.put(`/roles/${editingRoleId.value}`, roleForm)
@@ -144,6 +158,7 @@ async function saveRole() {
   await load()
 }
 
+// 单个权限勾选：用 Set 去重后写回，保证同一权限只出现一次
 function togglePermission(id: string, checked: boolean) {
   const values = new Set(roleForm.permissionIds as string[])
   checked ? values.add(id) : values.delete(id)
@@ -155,6 +170,7 @@ function togglePermissionGroup(group: Dict, checked: boolean) {
   ids.forEach(id => togglePermission(id, checked))
 }
 
+// 勾选子权限时自动补上所属菜单权限，避免出现「有按钮无入口」
 function onPermissionChange(item: Dict, value: unknown) {
   const checked = Boolean(value)
   togglePermission(item.id, checked)

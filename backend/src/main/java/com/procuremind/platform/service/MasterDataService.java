@@ -32,6 +32,16 @@ import com.procuremind.platform.pojo.request.MaterialRequest;
 import com.procuremind.platform.pojo.request.UnitRequest;
 import com.procuremind.platform.pojo.request.WarehouseRequest;
 
+/**
+ * 主数据：物资分类（含动态属性定义）、物资、仓库、计量单位与品牌的维护。
+ *
+ * <p>这些数据被采购申请、采购订单、收货与库存引用，所以删除统一是「先查引用再软删」，有引用时只允许停用；
+ * 动态属性定义挂在分类上，物资取值以 JSON 存储，写入前按定义做类型与必填校验，改定义时还要确认存量物资
+ * 仍兼容。编码只有物资创建后不可改，其余主体允许改编码。</p>
+ *
+ * <p>本类不维护库存数量、批次与序列号，也不处理供应商（见 {@link SupplierService}）与附件存储。
+ * 依赖：MasterDataMapper（全部读写）、Jackson ObjectMapper（属性 JSON 的序列化与解析）。</p>
+ */
 @Service
 public class MasterDataService {
     private final MasterDataMapper mapper;
@@ -54,6 +64,7 @@ public class MasterDataService {
         return row;
     }
 
+    /** 建分类：上级必须存在，属性编码在分类内唯一，ENUM 必须有选项；属性定义与分类同事务写入。 */
     @Transactional
     public Long createCategory(MaterialCategoryRequest request) {
         validateCategoryRequest(null, request);
@@ -65,6 +76,10 @@ public class MasterDataService {
         return id;
     }
 
+    /**
+     * 改分类：除环检测外，还要用新定义回放存量物资的取值——删掉已用的属性、收紧类型都会被拒，
+     * 避免历史 JSON 变成脏数据。
+     */
     @Transactional
     public void updateCategory(Long id, MaterialCategoryRequest request) {
         requireCategory(id);
@@ -75,6 +90,7 @@ public class MasterDataService {
         replaceAttributes(id, request.attributes());
     }
 
+    /** 删分类：有子分类或关联物资时拒绝；先清属性定义再软删，不留孤儿行。 */
     @Transactional
     public void deleteCategory(Long id) {
         requireCategory(id);
@@ -88,6 +104,7 @@ public class MasterDataService {
         return materials(keyword, null, null, null, null);
     }
 
+    /** 列表：空白条件按未传处理；追踪方式先 trim 再转大写，与前端存量入参保持一致。 */
     public List<Map<String, Object>> materials(String keyword, String brand, String category,
                                                String specification, String trackingMode) {
         return mapper.listMaterials(filterValue(keyword), filterValue(brand), filterValue(category),
@@ -98,6 +115,10 @@ public class MasterDataService {
         return materialsPage(keyword, null, null, null, null, current, size);
     }
 
+    /**
+     * 分页：页码夹到 ≥1、页大小夹到 1~100，count 与 page 复用同一套规范化参数，保证总数与记录同口径；
+     * 返回 MyBatis-Plus 风格的壳（records/total/current/size/pages）。
+     */
     public Map<String, Object> materialsPage(String keyword, String brand, String category,
                                              String specification, String trackingMode, int current, int size) {
         int page = Math.max(current, 1);
@@ -135,6 +156,10 @@ public class MasterDataService {
         return findOne(mapper.findMaterial(id), "物资不存在");
     }
 
+    /**
+     * 建物资：分类、单位、品牌都要可用，动态属性按分类定义校验（未定义、类型不符、必填缺失都拒）；
+     * 编码唯一由库约束，insert 不回填主键，按编码反查。
+     */
     @Transactional
     public Long createMaterial(MaterialRequest request) {
         validateMaterialRequest(null, request);
@@ -145,6 +170,9 @@ public class MasterDataService {
         return mapper.findMaterialIdByCode(request.code());
     }
 
+    /**
+     * 改物资：编码创建后不允许改；已有流水、收货或结存时也不允许改追踪方式，否则批次与序列号的历史语义会断。
+     */
     @Transactional
     public void updateMaterial(Long id, MaterialRequest request) {
         Map<String, Object> existing = material(id);
@@ -157,11 +185,13 @@ public class MasterDataService {
                 json(request.attributes()), SecurityUtils.currentUser().id());
     }
 
+    /** 只切启用位，不做引用校验：停用物资是允许的，历史单据继续引用它。 */
     public void setMaterialStatus(Long id, boolean enabled) {
         requireMaterial(id);
         mapper.updateMaterialStatus(id, enabled, SecurityUtils.currentUser().id());
     }
 
+    /** 被申请、订单、收货、结存或流水任一处引用过就拒绝，只能停用。 */
     @Transactional
     public void deleteMaterial(Long id) {
         requireMaterial(id);
@@ -195,6 +225,7 @@ public class MasterDataService {
                 SecurityUtils.currentUser().id());
     }
 
+    /** 停用前要求没有任何非零结存，避免库存挂在停用仓库下。 */
     public void setWarehouseStatus(Long id, boolean enabled) {
         requireWarehouse(id, false);
         if (!enabled && mapper.countBalanceWithStock(id) > 0)
@@ -228,6 +259,7 @@ public class MasterDataService {
         return mapper.findUnitIdByCode(request.code());
     }
 
+    /** 已被采购订单使用的单位不能改小数精度，否则历史数量口径会跟着变。 */
     public void updateUnit(Long id, UnitRequest request) {
         requireUnit(id, false);
         if (mapper.countUnitUsedInPurchaseOrders(id) > 0) {
@@ -299,6 +331,10 @@ public class MasterDataService {
         }
     }
 
+    /**
+     * 用新定义回放存量物资的取值：被删的属性只要还有值就拒；其余按新定义重校验，失败时带上物资编码，
+     * 让管理员知道是哪条数据不兼容。
+     */
     private void validateExistingMaterialAttributes(Long categoryId, List<MaterialAttributeRequest> definitions) {
         Map<String, MaterialAttributeRequest> next = new LinkedHashMap<>();
         if (definitions != null) definitions.forEach(definition -> next.put(definition.code(), definition));
@@ -342,6 +378,7 @@ public class MasterDataService {
         }
     }
 
+    /** 逐类型试解析，任何失败都统一成「值与类型不匹配」，不把底层异常类型漏给前端。 */
     private void validateAttributeValue(MaterialAttributeRequest definition, Object value) {
         try {
             switch (definition.valueType()) {
@@ -373,6 +410,7 @@ public class MasterDataService {
         }
     }
 
+    /** 同部门环检测：visited 兼防脏数据造成的死循环。 */
     private void ensureNoCategoryCycle(Long id, Long parentId) {
         Set<Long> visited = new HashSet<>();
         Long current = parentId;
@@ -411,6 +449,7 @@ public class MasterDataService {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "品牌不存在或不可用");
     }
 
+    /** 同一列在不同驱动下可能读成 String 或已解析对象，两种都接受；解析失败按 409，提示库里 JSON 已脏。 */
     private Map<String, Object> objectMap(Object value) {
         if (value == null) return Map.of();
         try {
@@ -437,6 +476,7 @@ public class MasterDataService {
         catch (Exception e) { throw new BusinessException(HttpStatus.BAD_REQUEST, "JSON数据格式错误"); }
     }
 
+    /** MySQL 的 tinyint(1) 可能被驱动读成 Boolean、Number 或字符串，三种都要认。 */
     private boolean booleanValue(Object value) {
         return value instanceof Boolean b ? b : value instanceof Number n ? n.intValue() != 0 : Boolean.parseBoolean(String.valueOf(value));
     }

@@ -8,6 +8,14 @@ import BusinessAttachments from '@/components/BusinessAttachments.vue'
 import type { Dict } from '@/types'
 import { formatQty } from '@/utils/datetime'
 
+/**
+ * 采购订单：商业条款审批、交付跟踪与分批收货，也承接采购申请转单生成的订单。
+ * 数据来源：/purchase-orders/page、/purchase-orders/{id}、/warehouses、/suppliers；
+ *           收货 POST /receipts（带 Idempotency-Key，与库存入账同一事务）。
+ * 权限：purchaseorder:update/edit/cancel/close/delete；收货需 inventory:receive。
+ * 关键交互：详情抽屉、编辑草稿、提交审批、分批收货、取消/关闭/删除。
+ */
+
 const auth = useAuthStore()
 const rows = ref<Dict[]>([])
 const keyword = ref('')
@@ -25,6 +33,7 @@ const editTotal = computed(() => editForm.items.reduce((sum: number, item: Dict)
 const status: Dict = { DRAFT: '草稿', PENDING_APPROVAL: '审批中', APPROVED: '待收货', PARTIALLY_RECEIVED: '部分收货', RECEIVED: '已收货', CLOSED: '已关闭', REJECTED: '已驳回', CANCELLED: '已取消' }
 const statusType: Dict = { DRAFT: 'info', PENDING_APPROVAL: 'warning', APPROVED: 'success', PARTIALLY_RECEIVED: 'warning', RECEIVED: 'success', CLOSED: 'info', REJECTED: 'danger', CANCELLED: 'info' }
 
+// 并发取列表、仓库与供应商；供应商无权限时跳过，弹窗下拉自然为空
 async function load() {
   const [pageData, warehouseRows, supplierRows] = await Promise.all([
     http.get('/purchase-orders/page', { params: { keyword: keyword.value, current: page.current, size: page.size } }),
@@ -45,6 +54,7 @@ async function open(row: Dict) {
   drawer.value = true
 }
 
+// 提交审批：确认后 POST /submit，成功刷新列表，状态变审批中
 async function submit(row: Dict) {
   await ElMessageBox.confirm(`确认提交订单 ${row.orderNo} 进行商业条款审批？`, '提交确认', { type: 'warning' })
   await http.post(`/purchase-orders/${row.id}/submit`)
@@ -52,12 +62,14 @@ async function submit(row: Dict) {
   await load()
 }
 
+// 编辑：先取最新详情再回填，避免用列表快照里的旧金额与明细
 async function openEdit(row: Dict) {
   const data: Dict = await http.get(`/purchase-orders/${row.id}`)
   Object.assign(editForm, { id: data.id, supplierId: data.supplierId, deliveryDate: data.deliveryDate, taxRate: Number(data.taxRate), terms: data.terms || '', items: data.items.map((item: Dict) => ({ id: item.id, materialCode: item.materialCode, materialName: item.materialName, quantity: Number(item.quantity), unitPrice: Number(item.unitPrice), remark: item.remark || '' })) })
   editDialog.value = true
 }
 
+// 保存草稿：供应商/交付日期必填、单价非负，成功后状态回到草稿并刷新
 async function saveEdit() {
   if (!editForm.supplierId || !editForm.deliveryDate || editForm.items.some((x: Dict) => Number(x.unitPrice) < 0)) return ElMessage.warning('请完整填写供应商、交付日期和非负单价')
   await http.put(`/purchase-orders/${editForm.id}`, editForm)
@@ -66,6 +78,7 @@ async function saveEdit() {
   await load()
 }
 
+// 取消订单：取消原因必填，成功关闭抽屉并刷新
 async function cancel(row: Dict) {
   const { value } = await ElMessageBox.prompt(`请输入取消订单 ${row.orderNo} 的原因`, '取消订单', { inputPattern: /\S+/, inputErrorMessage: '取消原因不能为空', type: 'warning' })
   await http.patch(`/purchase-orders/${row.id}/cancel`, { reason: value })
@@ -90,6 +103,7 @@ async function remove(row: Dict) {
   await load()
 }
 
+// 收货弹窗：只保留未收满的明细，本次数量默认等于剩余可收数量
 async function openReceive(row: Dict) {
   detail.value = await http.get(`/purchase-orders/${row.id}`)
   receipt.purchaseOrderId = row.id
@@ -103,6 +117,7 @@ async function openReceive(row: Dict) {
   receiveDialog.value = true
 }
 
+// 收货校验：数量在剩余范围内、批次必填、序列号数量与去重；返回错误文案供提示
 function validateReceipt() {
   if (!receipt.warehouseId || !receipt.items.length) return '请选择仓库并保留至少一条收货明细'
   for (const item of receipt.items) {
@@ -117,6 +132,7 @@ function validateReceipt() {
   }
 }
 
+// 提交收货：前端先校验，成功后关弹窗并刷新；幂等键保证重复点击不会重复入账
 async function receive() {
   const error = validateReceipt()
   if (error) {
@@ -143,6 +159,7 @@ async function receive() {
   }
 }
 
+// 数据范围：采购员只能操作自己创建的单据，ADMIN 角色例外
 function isOwner(row: Dict) { return row.purchaserId === auth.user?.id }
 function canManage(row: Dict) { return isOwner(row) || !!auth.user?.roles.includes('ADMIN') }
 function removeReceiptItem(index: number) { receipt.items.splice(index, 1) }

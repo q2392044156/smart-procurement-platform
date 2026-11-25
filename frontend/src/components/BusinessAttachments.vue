@@ -5,6 +5,13 @@ import http from '@/api/http'
 import { formatTime } from '@/utils/datetime'
 import type { Dict } from '@/types'
 
+/**
+ * 业务附件子组件：采购申请/采购订单详情里的附件清单与上传入口。
+ * 数据来源：GET /files/attachments/{businessType}/{businessId}；上传走 /files/presign 直传。
+ * 权限：由父组件传入 editable 决定是否显示上传/移除，组件本身不判定权限。
+ * 关键交互：选文件 → 预签名直传 → 关联业务；下载换签名地址，移除先解关联再删文件。
+ */
+
 const props = defineProps<{ businessType: 'REQUISITION' | 'PURCHASE_ORDER', businessId: string, editable?: boolean }>()
 const rows = ref<Dict[]>([])
 const dialog = ref(false)
@@ -13,14 +20,17 @@ const selected = ref<File>()
 const form = ref({ category: 'OTHER', note: '' })
 const categories: Dict = { REQUEST: '需求说明', QUOTATION: '报价文件', CONTRACT: '合同文件', TECHNICAL: '技术资料', OTHER: '其他' }
 
+// 按业务类型与 ID 拉附件列表；props 变化时由文件末尾的 watch 重新触发
 async function load() {
   if (props.businessId) rows.value = await http.get(`/files/attachments/${props.businessType}/${props.businessId}`)
 }
 
+// 原生 input 选文件：只保留第一个，多次选择以最后一次为准
 function choose(event: Event) {
   selected.value = (event.target as HTMLInputElement).files?.[0]
 }
 
+// 上传：预签名后 PUT 直传，再建关联记录；失败保留弹窗并提示，成功清空表单
 async function upload() {
   if (!selected.value) return ElMessage.warning('请选择文件')
   uploading.value = true
@@ -43,11 +53,13 @@ async function upload() {
   }
 }
 
+// 下载：先用 fileId 换带签名的地址，再新窗口打开，避免暴露存储密钥
 async function download(row: Dict) {
   const result: Dict = await http.get(`/files/${row.fileId}`)
   window.open(result.downloadUrl, '_blank', 'noopener')
 }
 
+// 移除：先解业务关联再删文件；删文件失败不阻塞，由文件清理策略兜底
 async function remove(row: Dict) {
   await ElMessageBox.confirm(`确认移除附件“${row.fileName}”？`, '移除附件', { type: 'warning' })
   await http.delete(`/files/attachments/${row.id}`)
@@ -56,6 +68,7 @@ async function remove(row: Dict) {
   await load()
 }
 
+// businessId 变化（切换单据）时立即重载，immediate 保证首次挂载也发请求
 watch(() => [props.businessType, props.businessId], load, { immediate: true })
 </script>
 
