@@ -24,6 +24,16 @@ public class DataScopeService {
         return filter(purchaserAlias + ".department_id", orderAlias + ".purchaser_id");
     }
 
+    /** 采购申请的数据范围片断（内联版），供 mapper XML 直接拼接。 */
+    public String requisitionScope() {
+        return requisitionFilter("r").literal();
+    }
+
+    /** 采购订单的数据范围片断（内联版）。 */
+    public String purchaseOrderScope(String orderAlias, String purchaserAlias) {
+        return purchaseOrderFilter(orderAlias, purchaserAlias).literal();
+    }
+
     public void requireRequisition(Long id) {
         SqlFilter filter = requisitionFilter("r");
         require("select count(*) from pr_requisition r where r.id=? and r.deleted=0 and " + filter.clause(), id, filter.args());
@@ -100,5 +110,20 @@ public class DataScopeService {
         int rank() { return rank; }
     }
 
-    public record SqlFilter(String clause, Object[] args) {}
+    /**
+     * 供 MyBatis ${} 使用的内联片断。占位符的实参全部是服务端生成的 Long 或枚举名，
+     * 不含用户输入，因此内联不引入注入面；用户输入一律走 #{} 绑定。
+     */
+    public record SqlFilter(String clause, Object[] args) {
+        public String literal() {
+            StringBuilder out = new StringBuilder(clause.length() + 16);
+            int next = 0;
+            for (int i = 0; i < clause.length(); i++) {
+                char c = clause.charAt(i);
+                if (c == '?') out.append(args[next++]);
+                else out.append(c);
+            }
+            return out.toString();
+        }
+    }
 }

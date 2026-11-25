@@ -36,6 +36,12 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: 20s
 
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-aliases-package: com.procuremind.platform.pojo
+  configuration:
+    map-underscore-to-camel-case: true
+
 flowable:
   database-schema-update: true
   async-executor-activate: false

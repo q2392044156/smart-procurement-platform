@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.procuremind.platform.mapper.RequisitionMapper">
+
+    <!-- 列表投影。list 用附件数、page 用明细数，是两套既有口径，保持原样。 -->
+    <sql id="listColumns">
+        cast(r.id as char) id,
+        r.requisition_no requisitionNo,
+        cast(r.applicant_id as char) applicantId,
+        d.name department,
+        u.display_name applicant,
+        r.required_date requiredDate,
+        r.purpose,
+        r.budget_amount budgetAmount,
+        r.status,
+        r.created_at createdAt
+    </sql>
+
+    <sql id="pageWhere">
+        r.deleted=0 and ${scope}
+        <if test="keyword != null and keyword != ''">
+            and (r.requisition_no like concat('%', #{keyword}, '%') or r.purpose like concat('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null and status != ''">
+            and r.status=#{status}
+        </if>
+    </sql>
+
+    <select id="list" resultType="map">
+        select <include refid="listColumns"/>,
+        (select count(*) from fs_business_attachment a
+        where a.business_type='REQUISITION' and a.business_id=r.id and a.deleted=0) attachmentCount
+        from pr_requisition r
+        join sys_department d on d.id=r.department_id
+        join sys_user u on u.id=r.applicant_id
+        where r.deleted=0 and ${scope}
+        order by r.id desc
+    </select>
+
+    <select id="countPage" resultType="long">
+        select count(*) from pr_requisition r where
+        <include refid="pageWhere"/>
+    </select>
+
+    <select id="page" resultType="map">
+        select <include refid="listColumns"/>,
+        (select count(*) from pr_requisition_item i
+        where i.requisition_id=r.id and i.deleted=0) itemCount
+        from pr_requisition r
+        join sys_department d on d.id=r.department_id
+        join sys_user u on u.id=r.applicant_id
+        where
+        <include refid="pageWhere"/>
+        order by r.id desc limit #{size} offset #{offset}
+    </select>
+
+    <select id="findDetail" resultType="map">
+        select cast(r.id as char) id,
+               r.requisition_no requisitionNo,
+               cast(r.department_id as char) departmentId,
+               cast(r.applicant_id as char) applicantId,
+               r.required_date requiredDate,
+               r.purpose,
+               r.budget_amount budgetAmount,
+               r.status,
+               r.process_instance_id processInstanceId,
+               r.rejection_reason rejectionReason,
+               r.cancellation_reason cancellationReason
+        from pr_requisition r
+        where r.id=#{id} and r.deleted=0
+    </select>
+
+    <select id="findItems" resultType="map">
+        select cast(i.id as char) id,
+               cast(i.material_id as char) materialId,
+               m.code materialCode,
+               m.name materialName,
+               i.quantity,
+               i.estimated_unit_price estimatedUnitPrice,
+               i.remark
+        from pr_requisition_item i
+        join md_material m on m.id=i.material_id
+        where i.requisition_id=#{id} and i.deleted=0
+    </select>
+
+    <select id="lockById" resultType="map">
+        select applicant_id, department_id, budget_amount, status
+        from pr_requisition
+        where id=#{id} and deleted=0 for update
+    </select>
+
+    <insert id="insertHeader">
+        insert into pr_requisition(requisition_no, department_id, applicant_id, required_date, purpose,
+                                   budget_amount, created_by, updated_by)
+        values (#{requisitionNo}, #{departmentId}, #{applicantId}, #{requiredDate}, #{purpose},
+                #{budgetAmount}, #{userId}, #{userId})
+    </insert>
+
+    <select id="findIdByNo" resultType="long">
+        select id from pr_requisition where requisition_no=#{requisitionNo}
+    </select>
+
+    <insert id="insertItem">
+        insert into pr_requisition_item(requisition_id, material_id, quantity, estimated_unit_price,
+                                        remark, created_by, updated_by)
+        values (#{requisitionId}, #{materialId}, #{quantity}, #{estimatedUnitPrice},
+                #{remark}, #{userId}, #{userId})
+    </insert>
+
+    <update id="updateHeader">
+        update pr_requisition
+        set required_date=#{requiredDate}, purpose=#{purpose}, budget_amount=#{budgetAmount},
+            status='DRAFT', rejection_reason=null, cancellation_reason=null, process_instance_id=null,
+            updated_by=#{userId}
+        where id=#{id}
+    </update>
+
+    <update id="updateStatus">
+        update pr_requisition
+        set status=#{status}, process_instance_id=#{processInstanceId},
+            rejection_reason=null, cancellation_reason=null, updated_by=#{userId}
+        where id=#{id}
+    </update>
+
+    <update id="cancel">
+        update pr_requisition
+        set status='CANCELLED', cancellation_reason=#{reason}, process_instance_id=null, updated_by=#{userId}
+        where id=#{id}
+    </update>
+
+    <update id="softDeleteItems">
+        update pr_requisition_item set deleted=1, updated_by=#{userId}
+        where requisition_id=#{id} and deleted=0
+    </update>
+
+    <update id="softDelete">
+        update pr_requisition set deleted=1, updated_by=#{userId} where id=#{id}
+    </update>
+
+    <select id="countEnabledMaterial" resultType="int">
+        select count(*) from md_material where id=#{materialId} and enabled=1 and deleted=0
+    </select>
+
+</mapper>
