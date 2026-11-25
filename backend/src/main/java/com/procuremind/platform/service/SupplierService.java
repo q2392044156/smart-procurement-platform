@@ -88,14 +88,14 @@ public class SupplierService {
     }
 
     @Transactional public void updateContact(Long supplierId,Long contactId,ContactRequest r) {
-        requireChild("sp_supplier_contact","联系人",supplierId,contactId); Long user=SecurityUtils.currentUser().id();
+        requireContact(supplierId,contactId); Long user=SecurityUtils.currentUser().id();
         if(Boolean.TRUE.equals(r.primaryContact())) clearPrimary(supplierId,user);
         mapper.updateContact(contactId,supplierId,r.name(),blank(r.position()),blank(r.phone()),blank(r.email()),Boolean.TRUE.equals(r.primaryContact()),user);
         ensurePrimary(supplierId,user); syncPrimaryContact(supplierId);
     }
 
     @Transactional public void deleteContact(Long supplierId,Long contactId) {
-        requireChild("sp_supplier_contact","联系人",supplierId,contactId); Long user=SecurityUtils.currentUser().id();
+        requireContact(supplierId,contactId); Long user=SecurityUtils.currentUser().id();
         mapper.softDeleteContact(contactId,supplierId,user);
         ensurePrimary(supplierId,user); syncPrimaryContact(supplierId);
     }
@@ -112,13 +112,13 @@ public class SupplierService {
     }
 
     @Transactional public void updateQualification(Long supplierId,Long qualificationId,QualificationRequest r) {
-        requireChild("sp_supplier_qualification","资质记录",supplierId,qualificationId); validateQualification(qualificationId,supplierId,r);
+        requireQualification(supplierId,qualificationId); validateQualification(qualificationId,supplierId,r);
         mapper.updateQualification(qualificationId,supplierId,r.name(),r.fileId(),r.validFrom(),r.validUntil(),qualificationStatus(r.validUntil()),SecurityUtils.currentUser().id());
         if("QUALIFIED".equals(supplierRow(supplierId).get("status"))) requireValidQualification(supplierId);
     }
 
     @Transactional public void deleteQualification(Long supplierId,Long qualificationId) {
-        requireChild("sp_supplier_qualification","资质记录",supplierId,qualificationId);
+        requireQualification(supplierId,qualificationId);
         mapper.softDeleteQualification(qualificationId,supplierId,SecurityUtils.currentUser().id());
         if("QUALIFIED".equals(supplierRow(supplierId).get("status"))) requireValidQualification(supplierId);
     }
@@ -136,12 +136,12 @@ public class SupplierService {
     }
 
     @Transactional public void updateEvaluation(Long supplierId,Long evaluationId,EvaluationRequest r) {
-        requireChild("sp_supplier_evaluation","绩效记录",supplierId,evaluationId); uniquePeriod(evaluationId,supplierId,r.period()); Long user=SecurityUtils.currentUser().id();
+        requireEvaluation(supplierId,evaluationId); uniquePeriod(evaluationId,supplierId,r.period()); Long user=SecurityUtils.currentUser().id();
         mapper.updateEvaluation(evaluationId,supplierId,r.period(),r.qualityScore(),r.deliveryScore(),r.serviceScore(),total(r),blank(r.comment()),user); recalculateScore(supplierId,user);
     }
 
     @Transactional public void deleteEvaluation(Long supplierId,Long evaluationId) {
-        requireChild("sp_supplier_evaluation","绩效记录",supplierId,evaluationId); Long user=SecurityUtils.currentUser().id();
+        requireEvaluation(supplierId,evaluationId); Long user=SecurityUtils.currentUser().id();
         mapper.softDeleteEvaluation(evaluationId,supplierId,user); recalculateScore(supplierId,user);
     }
 
@@ -186,7 +186,10 @@ public class SupplierService {
     private void syncPrimaryContact(Long supplierId){Map<String,Object> row=mapper.findPrimaryContactSnapshot(supplierId);Long user=SecurityUtils.currentUser().id();if(row==null)mapper.clearSupplierContactSnapshot(user,supplierId);else mapper.updateSupplierContactSnapshot(supplierId,(String)row.get("name"),(String)row.get("phone"),(String)row.get("email"),user);}
     private boolean hasContact(SupplierRequest r){return text(r.contactName())||text(r.contactPhone())||text(r.email());}
     private boolean text(String v){return v!=null&&!v.isBlank();} private String contactName(String v){return text(v)?v.trim():"未命名联系人";} private String blank(String v){return text(v)?v.trim():null;}
-    private void requireSupplier(Long id){supplierRow(id);} private void requireChild(String table,String name,Long supplierId,Long id){requireSupplier(supplierId);if(mapper.countChild(table,id,supplierId)==0)throw notFound(name+"不存在");}
+    private void requireSupplier(Long id){supplierRow(id);}
+    private void requireContact(Long supplierId,Long id){requireSupplier(supplierId);if(mapper.countContact(id,supplierId)==0)throw notFound("联系人不存在");}
+    private void requireQualification(Long supplierId,Long id){requireSupplier(supplierId);if(mapper.countQualification(id,supplierId)==0)throw notFound("资质记录不存在");}
+    private void requireEvaluation(Long supplierId,Long id){requireSupplier(supplierId);if(mapper.countEvaluation(id,supplierId)==0)throw notFound("绩效记录不存在");}
     private BusinessException conflict(String m){return new BusinessException(HttpStatus.CONFLICT,m);} private BusinessException notFound(String m){return new BusinessException(HttpStatus.NOT_FOUND,m);}
 
     public record SupplierRequest(@NotBlank @Pattern(regexp="[A-Z][A-Z0-9_-]{1,49}") String code,@NotBlank @Size(max=200) String name,@Size(max=50) String unifiedCreditCode,@NotBlank @Pattern(regexp="A|B|C|D") String level,@NotBlank @Pattern(regexp="PENDING|QUALIFIED|SUSPENDED|BLACKLISTED") String status,@Size(max=100) String contactName,@Size(max=50) String contactPhone,@Email @Size(max=100) String email,@Size(max=300) String address){}

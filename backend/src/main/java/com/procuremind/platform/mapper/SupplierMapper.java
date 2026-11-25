@@ -66,7 +66,11 @@ public interface SupplierMapper {
                                        @Param("id") Long id);
 
     /** 子表归属校验。table 只接收服务内写死的三张子表名，不来自请求参数。 */
-    int countChild(@Param("table") String table, @Param("id") Long id, @Param("supplierId") Long supplierId);
+    int countContact(@Param("id") Long id, @Param("supplierId") Long supplierId);
+
+    int countQualification(@Param("id") Long id, @Param("supplierId") Long supplierId);
+
+    int countEvaluation(@Param("id") Long id, @Param("supplierId") Long supplierId);
 
     int insertSupplier(@Param("code") String code, @Param("name") String name,
                        @Param("unifiedCreditCode") String unifiedCreditCode, @Param("level") String level,

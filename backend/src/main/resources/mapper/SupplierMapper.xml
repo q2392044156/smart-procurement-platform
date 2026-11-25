@@ -174,9 +174,16 @@
         where supplier_id=#{supplierId} and period=#{period} and id&lt;&gt;#{id} and deleted=0
     </select>
 
-    <!-- table 由服务层写死传入（三张子表之一），不是请求参数，所以只能用 ${} 拼表名。 -->
-    <select id="countChild" resultType="int">
-        select count(*) from ${table} where id=#{id} and supplier_id=#{supplierId} and deleted=0
+    <select id="countContact" resultType="int">
+        select count(*) from sp_supplier_contact where id=#{id} and supplier_id=#{supplierId} and deleted=0
+    </select>
+
+    <select id="countQualification" resultType="int">
+        select count(*) from sp_supplier_qualification where id=#{id} and supplier_id=#{supplierId} and deleted=0
+    </select>
+
+    <select id="countEvaluation" resultType="int">
+        select count(*) from sp_supplier_evaluation where id=#{id} and supplier_id=#{supplierId} and deleted=0
     </select>
 
     <insert id="insertSupplier">
