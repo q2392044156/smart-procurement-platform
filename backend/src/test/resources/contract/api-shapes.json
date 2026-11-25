@@ -1,0 +1,889 @@
+{
+  "GET /api/v1/auth/me" : {
+    "$type" : "object",
+    "departmentId" : {
+      "$type" : "string"
+    },
+    "displayName" : {
+      "$type" : "string"
+    },
+    "id" : {
+      "$type" : "string"
+    },
+    "permissions" : {
+      "$type" : "array",
+      "$items" : {
+        "$type" : "string"
+      }
+    },
+    "roles" : {
+      "$type" : "array",
+      "$items" : {
+        "$type" : "string"
+      }
+    },
+    "username" : {
+      "$type" : "string"
+    }
+  },
+  "GET /api/v1/requisitions/page" : {
+    "$type" : "object",
+    "current" : {
+      "$type" : "number"
+    },
+    "pages" : {
+      "$type" : "number"
+    },
+    "records" : {
+      "$type" : "array",
+      "$items" : {
+        "$type" : "object",
+        "applicant" : {
+          "$type" : "string"
+        },
+        "applicantId" : {
+          "$type" : "string"
+        },
+        "budgetAmount" : {
+          "$type" : "string"
+        },
+        "createdAt" : {
+          "$type" : "string"
+        },
+        "department" : {
+          "$type" : "string"
+        },
+        "id" : {
+          "$type" : "string"
+        },
+        "itemCount" : {
+          "$type" : "string"
+        },
+        "purpose" : {
+          "$type" : "string"
+        },
+        "requiredDate" : {
+          "$type" : "string"
+        },
+        "requisitionNo" : {
+          "$type" : "string"
+        },
+        "status" : {
+          "$type" : "string"
+        }
+      }
+    },
+    "size" : {
+      "$type" : "number"
+    },
+    "total" : {
+      "$type" : "number"
+    }
+  },
+  "GET /api/v1/requisitions/{id}" : {
+    "$type" : "object",
+    "applicantId" : {
+      "$type" : "string"
+    },
+    "budgetAmount" : {
+      "$type" : "string"
+    },
+    "cancellationReason" : {
+      "$type" : "string"
+    },
+    "departmentId" : {
+      "$type" : "string"
+    },
+    "id" : {
+      "$type" : "string"
+    },
+    "items" : {
+      "$type" : "array",
+      "$items" : {
+        "$type" : "object",
+        "estimatedUnitPrice" : {
+          "$type" : "string"
+        },
+        "id" : {
+          "$type" : "string"
+        },
+        "materialCode" : {
+          "$type" : "string"
+        },
+        "materialId" : {
+          "$type" : "string"
+        },
+        "materialName" : {
+          "$type" : "string"
+        },
+        "quantity" : {
+          "$type" : "string"
+        },
+        "remark" : {
+          "$type" : "string"
+        }
+      }
+    },
+    "purpose" : {
+      "$type" : "string"
+    },
+    "requiredDate" : {
+      "$type" : "string"
+    },
+    "requisitionNo" : {
+      "$type" : "string"
+    },
+    "status" : {
+      "$type" : "string"
+    }
+  },
+  "GET /api/v1/purchase-orders/page" : {
+    "$type" : "object",
+    "current" : {
+      "$type" : "number"
+    },
+    "pages" : {
+      "$type" : "number"
+    },
+    "records" : {
+      "$type" : "array",
+      "$items" : {
+        "$type" : "object",
+        "createdAt" : {
+          "$type" : "string"
+        },
+        "deliveryDate" : {
+          "$type" : "string"
+        },
+        "id" : {
+          "$type" : "string"
+        },
+        "orderNo" : {
+          "$type" : "string"
+        },
+        "purchaser" : {
+          "$type" : "string"
+        },
+        "purchaserId" : {
+          "$type" : "string"
+        },
+        "receiptCount" : {
+          "$type" : "string"
+        },
+        "status" : {
+          "$type" : "string"
+        },
+        "supplier" : {
+          "$type" : "string"
+        },
+        "totalAmount" : {
+          "$type" : "string"
+        }
+      }
+    },
+    "size" : {
+      "$type" : "number"
+    },
+    "total" : {
+      "$type" : "number"
+    }
+  },
+  "GET /api/v1/purchase-orders/{id}" : {
+    "$type" : "object",
+    "deliveryDate" : {
+      "$type" : "string"
+    },
+    "id" : {
+      "$type" : "string"
+    },
+    "items" : {
+      "$type" : "array",
+      "$items" : {
+        "$type" : "object",
+        "id" : {
+          "$type" : "string"
+        },
+        "materialCode" : {
+          "$type" : "string"
+        },
+        "materialId" : {
+          "$type" : "string"
+        },
+        "materialName" : {
+          "$type" : "string"
+        },
+        "quantity" : {
+          "$type" : "string"
+        },
+        "receivedQuantity" : {
+          "$type" : "string"
+        },
+        "remark" : {
+          "$type" : "string"
+        },
+        "taxRate" : {
+          "$type" : "string"
+        },
+        "trackingMode" : {
+          "$type" : "string"
+        },
+        "unitPrice" : {
+          "$type" : "string"
+        }
+      }
+    },
+    "orderNo" : {
+      "$type" : "string"
+    },
+    "purchaserId" : {
+      "$type" : "string"
+    },
+    "status" : {
+      "$type" : "string"
+    },
+    "supplierId" : {
+      "$type" : "string"
+    },
+    "taxRate" : {
+      "$type" : "string"
+    },
+    "terms" : {
+      "$type" : "string"
+    },
+    "totalAmount" : {
+      "$type" : "string"
+    }
+  },
+  "GET /api/v1/receipts/page" : {
+    "$type" : "object",
+    "current" : {
+      "$type" : "number"
+    },
+    "pages" : {
+      "$type" : "number"
+    },
+    "records" : {
+      "$type" : "array",
+      "$items" : "empty"
+    },
+    "size" : {
+      "$type" : "number"
+    },
+    "total" : {
+      "$type" : "number"
+    }
+  },
+  "GET /api/v1/inventory/balances/page" : {
+    "$type" : "object",
+    "current" : {
+      "$type" : "number"
+    },
+    "pages" : {
+      "$type" : "number"
+    },
+    "records" : {
+      "$type" : "array",
+      "$items" : {
+        "$type" : "object",
+        "id" : {
+          "$type" : "string"
+        },
+        "lowStock" : {
+          "$type" : "number"
+        },
+        "materialCode" : {
+          "$type" : "string"
+        },
+        "materialName" : {
+          "$type" : "string"
+        },
+        "minStock" : {
+          "$type" : "string"
+        },
+        "quantity" : {
+          "$type" : "string"
+        },
+        "trackingMode" : {
+          "$type" : "string"
+        },
+        "warehouse" : {
+          "$type" : "string"
+        }
+      }
+    },
+    "size" : {
+      "$type" : "number"
+    },
+    "total" : {
+      "$type" : "number"
+    }
+  },
+  "GET /api/v1/inventory/ledger/page" : {
+    "$type" : "object",
+    "current" : {
+      "$type" : "number"
+    },
+    "pages" : {
+      "$type" : "number"
+    },
+    "records" : {
+      "$type" : "array",
+      "$items" : {
+        "$type" : "object",
+        "balanceAfter" : {
+          "$type" : "string"
+        },
+        "businessId" : {
+          "$type" : "string"
+        },
+        "businessType" : {
+          "$type" : "string"
+        },
+        "createdAt" : {
+          "$type" : "string"
+        },
+        "direction" : {
+          "$type" : "string"
+        },
+        "id" : {
+          "$type" : "string"
+        },
+        "materialCode" : {
+          "$type" : "string"
+        },
+        "materialName" : {
+          "$type" : "string"
+        },
+        "quantity" : {
+          "$type" : "string"
+        },
+        "warehouse" : {
+          "$type" : "string"
+        }
+      }
+    },
+    "size" : {
+      "$type" : "number"
+    },
+    "total" : {
+      "$type" : "number"
+    }
+  },
+  "GET /api/v1/inventory/issues" : {
+    "$type" : "object",
+    "current" : {
+      "$type" : "number"
+    },
+    "pages" : {
+      "$type" : "number"
+    },
+    "records" : {
+      "$type" : "array",
+      "$items" : "empty"
+    },
+    "size" : {
+      "$type" : "number"
+    },
+    "total" : {
+      "$type" : "number"
+    }
+  },
+  "GET /api/v1/suppliers/page" : {
+    "$type" : "object",
+    "current" : {
+      "$type" : "number"
+    },
+    "pages" : {
+      "$type" : "number"
+    },
+    "records" : {
+      "$type" : "array",
+      "$items" : {
+        "$type" : "object",
+        "address" : {
+          "$type" : "string"
+        },
+        "code" : {
+          "$type" : "string"
+        },
+        "contactCount" : {
+          "$type" : "string"
+        },
+        "contactName" : {
+          "$type" : "string"
+        },
+        "contactPhone" : {
+          "$type" : "string"
+        },
+        "email" : {
+          "$type" : "string"
+        },
+        "evaluationCount" : {
+          "$type" : "string"
+        },
+        "expiredQualificationCount" : {
+          "$type" : "string"
+        },
+        "id" : {
+          "$type" : "string"
+        },
+        "level" : {
+          "$type" : "string"
+        },
+        "name" : {
+          "$type" : "string"
+        },
+        "orderCount" : {
+          "$type" : "string"
+        },
+        "qualificationCount" : {
+          "$type" : "string"
+        },
+        "score" : {
+          "$type" : "string"
+        },
+        "status" : {
+          "$type" : "string"
+        },
+        "unifiedCreditCode" : {
+          "$type" : "string"
+        }
+      }
+    },
+    "size" : {
+      "$type" : "number"
+    },
+    "total" : {
+      "$type" : "number"
+    }
+  },
+  "GET /api/v1/suppliers/{id}" : {
+    "$type" : "object",
+    "address" : {
+      "$type" : "string"
+    },
+    "code" : {
+      "$type" : "string"
+    },
+    "contactName" : {
+      "$type" : "string"
+    },
+    "contactPhone" : {
+      "$type" : "string"
+    },
+    "contacts" : {
+      "$type" : "array",
+      "$items" : "empty"
+    },
+    "email" : {
+      "$type" : "string"
+    },
+    "evaluations" : {
+      "$type" : "array",
+      "$items" : "empty"
+    },
+    "id" : {
+      "$type" : "string"
+    },
+    "level" : {
+      "$type" : "string"
+    },
+    "name" : {
+      "$type" : "string"
+    },
+    "qualifications" : {
+      "$type" : "array",
+      "$items" : "empty"
+    },
+    "score" : {
+      "$type" : "string"
+    },
+    "status" : {
+      "$type" : "string"
+    },
+    "unifiedCreditCode" : {
+      "$type" : "string"
+    }
+  },
+  "GET /api/v1/materials/page" : {
+    "$type" : "object",
+    "current" : {
+      "$type" : "number"
+    },
+    "pages" : {
+      "$type" : "number"
+    },
+    "records" : {
+      "$type" : "array",
+      "$items" : {
+        "$type" : "object",
+        "attributes" : {
+          "$type" : "string"
+        },
+        "brand" : {
+          "$type" : "string"
+        },
+        "brandId" : {
+          "$type" : "string"
+        },
+        "category" : {
+          "$type" : "string"
+        },
+        "categoryId" : {
+          "$type" : "string"
+        },
+        "code" : {
+          "$type" : "string"
+        },
+        "enabled" : {
+          "$type" : "number"
+        },
+        "id" : {
+          "$type" : "string"
+        },
+        "minStock" : {
+          "$type" : "string"
+        },
+        "name" : {
+          "$type" : "string"
+        },
+        "specification" : {
+          "$type" : "string"
+        },
+        "trackingMode" : {
+          "$type" : "string"
+        },
+        "unit" : {
+          "$type" : "string"
+        },
+        "unitId" : {
+          "$type" : "string"
+        }
+      }
+    },
+    "size" : {
+      "$type" : "number"
+    },
+    "total" : {
+      "$type" : "number"
+    }
+  },
+  "GET /api/v1/contracts" : {
+    "$type" : "object",
+    "current" : {
+      "$type" : "number"
+    },
+    "pages" : {
+      "$type" : "number"
+    },
+    "records" : {
+      "$type" : "array",
+      "$items" : {
+        "$type" : "object",
+        "amount" : {
+          "$type" : "string"
+        },
+        "contractNo" : {
+          "$type" : "string"
+        },
+        "createdAt" : {
+          "$type" : "string"
+        },
+        "endDate" : {
+          "$type" : "string"
+        },
+        "id" : {
+          "$type" : "string"
+        },
+        "name" : {
+          "$type" : "string"
+        },
+        "signedDate" : {
+          "$type" : "string"
+        },
+        "startDate" : {
+          "$type" : "string"
+        },
+        "status" : {
+          "$type" : "string"
+        },
+        "supplier" : {
+          "$type" : "string"
+        },
+        "supplierId" : {
+          "$type" : "string"
+        },
+        "type" : {
+          "$type" : "string"
+        }
+      }
+    },
+    "size" : {
+      "$type" : "number"
+    },
+    "total" : {
+      "$type" : "number"
+    }
+  },
+  "GET /api/v1/budgets" : {
+    "$type" : "array",
+    "$items" : {
+      "$type" : "object",
+      "allocated" : {
+        "$type" : "string"
+      },
+      "available" : {
+        "$type" : "string"
+      },
+      "committed" : {
+        "$type" : "string"
+      },
+      "department" : {
+        "$type" : "string"
+      },
+      "departmentCode" : {
+        "$type" : "string"
+      },
+      "departmentId" : {
+        "$type" : "string"
+      },
+      "fiscalYear" : {
+        "$type" : "number"
+      },
+      "id" : {
+        "$type" : "string"
+      },
+      "utilization" : {
+        "$type" : "string"
+      }
+    }
+  },
+  "GET /api/v1/dashboard/summary" : {
+    "$type" : "object",
+    "activeOrders" : {
+      "$type" : "string"
+    },
+    "lowStockCount" : {
+      "$type" : "string"
+    },
+    "lowStockMaterials" : {
+      "$type" : "array",
+      "$items" : "empty"
+    },
+    "monthlyTrend" : {
+      "$type" : "array",
+      "$items" : "empty"
+    },
+    "orderStatus" : {
+      "$type" : "array",
+      "$items" : {
+        "$type" : "object",
+        "name" : {
+          "$type" : "string"
+        },
+        "value" : {
+          "$type" : "string"
+        }
+      }
+    },
+    "pendingApprovals" : {
+      "$type" : "string"
+    },
+    "supplierRanking" : {
+      "$type" : "array",
+      "$items" : {
+        "$type" : "object",
+        "amount" : {
+          "$type" : "string"
+        },
+        "name" : {
+          "$type" : "string"
+        },
+        "score" : {
+          "$type" : "string"
+        }
+      }
+    },
+    "yearPurchaseAmount" : {
+      "$type" : "string"
+    }
+  },
+  "GET /api/v1/alerts/summary" : {
+    "$type" : "object",
+    "approvals" : {
+      "$type" : "object",
+      "count" : {
+        "$type" : "number"
+      },
+      "items" : {
+        "$type" : "array",
+        "$items" : "empty"
+      },
+      "message" : {
+        "$type" : "string"
+      },
+      "olderThanHours" : {
+        "$type" : "number"
+      },
+      "overdueCount" : {
+        "$type" : "string"
+      }
+    },
+    "deliveries" : {
+      "$type" : "object",
+      "count" : {
+        "$type" : "number"
+      },
+      "items" : {
+        "$type" : "array",
+        "$items" : "empty"
+      },
+      "message" : {
+        "$type" : "string"
+      },
+      "overdueCount" : {
+        "$type" : "string"
+      },
+      "withinDays" : {
+        "$type" : "number"
+      }
+    },
+    "generatedAt" : {
+      "$type" : "string"
+    },
+    "qualifications" : {
+      "$type" : "object",
+      "count" : {
+        "$type" : "number"
+      },
+      "items" : {
+        "$type" : "array",
+        "$items" : {
+          "$type" : "object",
+          "daysLeft" : {
+            "$type" : "string"
+          },
+          "id" : {
+            "$type" : "string"
+          },
+          "qualification" : {
+            "$type" : "string"
+          },
+          "supplierCode" : {
+            "$type" : "string"
+          },
+          "supplierId" : {
+            "$type" : "string"
+          },
+          "supplierName" : {
+            "$type" : "string"
+          },
+          "validUntil" : {
+            "$type" : "string"
+          }
+        }
+      },
+      "message" : {
+        "$type" : "string"
+      },
+      "overdueCount" : {
+        "$type" : "string"
+      },
+      "withinDays" : {
+        "$type" : "number"
+      }
+    }
+  },
+  "GET /api/v1/workflow/tasks" : {
+    "$type" : "array",
+    "$items" : "empty"
+  },
+  "GET /api/v1/kb/documents" : {
+    "$type" : "object",
+    "current" : {
+      "$type" : "number"
+    },
+    "pages" : {
+      "$type" : "number"
+    },
+    "records" : {
+      "$type" : "array",
+      "$items" : "empty"
+    },
+    "size" : {
+      "$type" : "number"
+    },
+    "total" : {
+      "$type" : "number"
+    }
+  },
+  "GET /api/v1/users" : {
+    "$type" : "array",
+    "$items" : {
+      "$type" : "object",
+      "department" : {
+        "$type" : "string"
+      },
+      "departmentId" : {
+        "$type" : "string"
+      },
+      "displayName" : {
+        "$type" : "string"
+      },
+      "enabled" : {
+        "$type" : "number"
+      },
+      "id" : {
+        "$type" : "string"
+      },
+      "roleIds" : {
+        "$type" : "array",
+        "$items" : {
+          "$type" : "string"
+        }
+      },
+      "roles" : {
+        "$type" : "array",
+        "$items" : {
+          "$type" : "string"
+        }
+      },
+      "username" : {
+        "$type" : "string"
+      }
+    }
+  },
+  "GET /api/v1/audits" : {
+    "$type" : "array",
+    "$items" : {
+      "$type" : "object",
+      "createdAt" : {
+        "$type" : "string"
+      },
+      "durationMs" : {
+        "$type" : "string"
+      },
+      "id" : {
+        "$type" : "string"
+      },
+      "method" : {
+        "$type" : "string"
+      },
+      "path" : {
+        "$type" : "string"
+      },
+      "requestId" : {
+        "$type" : "string"
+      },
+      "result" : {
+        "$type" : "string"
+      },
+      "userId" : {
+        "$type" : "string"
+      },
+      "username" : {
+        "$type" : "string"
+      }
+    }
+  }
+}
