@@ -22,7 +22,7 @@ const typeName: Dict = { FRAMEWORK: '框架协议', PURCHASE: '采购合同', SE
 async function load() {
   const [data, supplierRows] = await Promise.all([
     http.get('/contracts', { params: { keyword: filters.keyword || undefined, status: filters.status || undefined, current: page.current, size: page.size } }),
-    suppliers.value.length ? Promise.resolve(suppliers.value) : http.get('/suppliers')
+    suppliers.value.length ? Promise.resolve(suppliers.value) : (auth.can('supplier:view') ? http.get('/suppliers') : Promise.resolve([]))
   ])
   rows.value = data.records
   page.total = Number(data.total)
