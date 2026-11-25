@@ -68,11 +68,11 @@ smart-procurement-platform/
 │   │   │   ├── agent/                    # 智能采购助手
 │   │   │   └── system/                   # 用户/角色/组织/审计
 │   │   ├── components/                   # 业务组件：附件、审批时间线、聊天图表附件
-│   │   ├── utils/                        # Markdown 渲染、回复中的附件链接识别
+│   │   ├── utils/                        # Markdown 渲染、附件链接识别、时间与数量格式化
 │   │   ├── layouts/                      # 管理端布局
 │   │   ├── router/                       # 路由与权限守卫
 │   │   ├── stores/                       # Pinia 状态
-│   │   ├── api/                          # Axios、SSE、接口封装
+│   │   ├── api/                          # 唯一 Axios 实例、401 刷新重放、文件下载
 │   │   ├── types/                        # TypeScript 类型
 │   │   ├── assets/                       # 全局样式与静态资源
 │   │   └── tests/                        # Vitest 单元测试（Markdown/附件/鉴权/SSE）
