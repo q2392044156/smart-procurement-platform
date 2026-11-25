@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import com.procuremind.platform.pojo.request.AttachmentRequest;
 
 @Service
 public class BusinessAttachmentService {
@@ -89,5 +90,5 @@ public class BusinessAttachmentService {
     private BusinessType parse(String value){try{return BusinessType.valueOf(value.toUpperCase());}catch(Exception e){throw new BusinessException(HttpStatus.BAD_REQUEST,"不支持的附件业务类型");}}
     private String blank(String value){return value==null||value.isBlank()?null:value.trim();}
     private enum BusinessType { REQUISITION,PURCHASE_ORDER }
-    public record AttachmentRequest(@NotNull @Positive Long fileId,@NotBlank @Pattern(regexp="REQUEST|QUOTATION|CONTRACT|TECHNICAL|OTHER") String category,@Size(max=300) String note){}
+    
 }

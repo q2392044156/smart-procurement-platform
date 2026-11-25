@@ -21,6 +21,11 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.procuremind.platform.pojo.SqlFilter;
+import com.procuremind.platform.pojo.request.MaterialRequest;
+import com.procuremind.platform.pojo.request.PurchaseOrderDirectRequest;
+import com.procuremind.platform.pojo.request.PurchaseOrderDirectItem;
+import com.procuremind.platform.pojo.request.SupplierRequest;
 
 /**
  * 旧 MCP 工具协议的内部适配层。仅内部令牌认证可以访问，不经 Nginx 对外暴露。
@@ -87,7 +92,7 @@ public class LegacyErpController {
     public ApiResponse<Map<String, Object>> supplierCreate(@RequestBody Map<String, Object> body) {
         String code = required(body, "supplierCode");
         String name = required(body, "name");
-        SupplierService.SupplierRequest request = new SupplierService.SupplierRequest(
+        SupplierRequest request = new SupplierRequest(
                 code, name, text(body, "unifiedCreditCode", null), text(body, "creditRating", "B"), "PENDING",
                 text(body, "contactPerson", null), text(body, "phone", null), text(body, "email", null), text(body, "address", null));
         Long id = suppliers.createSupplier(request);
@@ -210,7 +215,7 @@ public class LegacyErpController {
         Long categoryId = lookup("md_material_category", text(body, "category", null), "物资分类");
         Long unitId = lookup("md_unit", text(body, "unit", null), "计量单位");
         String specification = join(text(body, "model", null), text(body, "specification", null));
-        Long id = masterData.createMaterial(new MasterDataService.MaterialRequest(
+        Long id = masterData.createMaterial(new MaterialRequest(
                 code, name, categoryId, unitId, null, specification, "QUANTITY",
                 decimal(body, "stockWarningValue"), Map.of()));
         return ApiResponse.ok(Map.of("id", String.valueOf(id), "partCode", code));
@@ -230,7 +235,7 @@ public class LegacyErpController {
         size = Math.min(Math.max(size, 1), 100);
         String keyword = "%" + (orderNumber == null ? "" : orderNumber) + "%";
         String state = LegacyStatus.filter(status);
-        DataScopeService.SqlFilter scope = dataScope.purchaseOrderFilter("o", "u");
+        SqlFilter scope = dataScope.purchaseOrderFilter("o", "u");
         String clause = """
                 o.deleted=0 and """ + " " + scope.clause() + """
                  and o.order_no like ? and (? is null or o.status=?)
@@ -296,7 +301,7 @@ public class LegacyErpController {
     @PreAuthorize("hasAuthority('purchaseorder:edit')")
     public ApiResponse<Map<String, Object>> orderCreate(@RequestHeader(value = "Idempotency-Key", required = false) String key,
                                                         @RequestBody Map<String, Object> body) {
-        PurchaseOrderService.DirectOrderRequest request = directOrder(body);
+        PurchaseOrderDirectRequest request = directOrder(body);
         Map<String, Object> result = idempotency.execute(key, "LEGACY_CREATE_ORDER", request, () -> orders.createDirect(request));
         return ApiResponse.ok(result);
     }
@@ -306,7 +311,7 @@ public class LegacyErpController {
     public ApiResponse<Void> orderUpdate(@PathVariable Long id,
                                          @RequestHeader(value = "Idempotency-Key", required = false) String key,
                                          @RequestBody Map<String, Object> body) {
-        PurchaseOrderService.DirectOrderRequest request = directOrder(body);
+        PurchaseOrderDirectRequest request = directOrder(body);
         idempotency.execute(key, "LEGACY_UPDATE_ORDER", Map.of("id", id, "request", request), () -> {
             orders.updateDirect(id, request);
             return Map.of("id", String.valueOf(id), "updated", true);
@@ -419,8 +424,8 @@ public class LegacyErpController {
         return result;
     }
 
-    private PurchaseOrderService.DirectOrderRequest directOrder(Map<String, Object> body) {
-        List<PurchaseOrderService.DirectItem> items = new ArrayList<>();
+    private PurchaseOrderDirectRequest directOrder(Map<String, Object> body) {
+        List<PurchaseOrderDirectItem> items = new ArrayList<>();
         Object raw = body.get("orderDetail");
         if (raw == null) raw = body.get("items");
         if (raw instanceof List<?> list) {
@@ -428,12 +433,12 @@ public class LegacyErpController {
                 if (!(element instanceof Map<?, ?> map)) continue;
                 Map<String, Object> item = new LinkedHashMap<>();
                 map.forEach((k, v) -> item.put(String.valueOf(k), v));
-                items.add(new PurchaseOrderService.DirectItem(
+                items.add(new PurchaseOrderDirectItem(
                         longValue(item, "partId"), decimal(item, "quantity"),
                         decimal(item, "unitPrice"), text(item, "remark", null)));
             }
         }
-        return new PurchaseOrderService.DirectOrderRequest(
+        return new PurchaseOrderDirectRequest(
                 longValue(body, "supplierId"), date(body, "deliveryDate"), decimal(body, "taxRate"),
                 text(body, "terms", text(body, "remark", null)), items);
     }

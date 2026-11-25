@@ -14,6 +14,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
+import com.procuremind.platform.pojo.request.ReasonRequest;
+import com.procuremind.platform.pojo.request.PurchaseOrderRequest;
+import com.procuremind.platform.pojo.request.RequisitionRequest;
 
 /**
  * Agent 写入工具面：申请创建/提交/取消、申请转订单、订单取消。
@@ -39,7 +42,7 @@ public class WriteAgentController {
     @PreAuthorize("hasAuthority('requisition:create')")
     public ApiResponse<Map<String, Object>> createRequisition(
             @RequestHeader(value = "Idempotency-Key", required = false) String key,
-            @Valid @RequestBody RequisitionService.Request request) {
+            @Valid @RequestBody RequisitionRequest request) {
         return ApiResponse.ok(idempotency.execute(key, "AGENT_CREATE_REQUISITION", request, () -> {
             Long id = requisitions.create(request);
             return requisitions.detail(id);
@@ -62,7 +65,7 @@ public class WriteAgentController {
     public ApiResponse<Map<String, Object>> cancelRequisition(
             @RequestHeader(value = "Idempotency-Key", required = false) String key,
             @PathVariable Long id,
-            @Valid @RequestBody RequisitionService.ReasonRequest request) {
+            @Valid @RequestBody ReasonRequest request) {
         return ApiResponse.ok(idempotency.execute(key, "AGENT_CANCEL_REQUISITION",
                 Map.of("id", id, "request", request), () -> {
                     requisitions.cancel(id, request);
@@ -75,7 +78,7 @@ public class WriteAgentController {
     public ApiResponse<Map<String, Object>> convertRequisition(
             @RequestHeader(value = "Idempotency-Key", required = false) String key,
             @PathVariable Long id,
-            @Valid @RequestBody PurchaseOrderService.Request request) {
+            @Valid @RequestBody PurchaseOrderRequest request) {
         return ApiResponse.ok(idempotency.execute(key, "AGENT_CONVERT_REQUISITION",
                 Map.of("id", id, "request", request), () -> {
                     Long orderId = orders.convert(id, request);
@@ -88,7 +91,7 @@ public class WriteAgentController {
     public ApiResponse<Map<String, Object>> cancelOrder(
             @RequestHeader(value = "Idempotency-Key", required = false) String key,
             @PathVariable Long id,
-            @Valid @RequestBody PurchaseOrderService.ReasonRequest request) {
+            @Valid @RequestBody ReasonRequest request) {
         return ApiResponse.ok(idempotency.execute(key, "AGENT_CANCEL_ORDER",
                 Map.of("id", id, "request", request), () -> {
                     orders.cancel(id, request);

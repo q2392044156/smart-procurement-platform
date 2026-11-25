@@ -8,6 +8,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import com.procuremind.platform.pojo.request.ContractCreateRequest;
+import com.procuremind.platform.pojo.request.ContractUpdateRequest;
 
 /** 合同管理接口。 */
 @RestController
@@ -35,13 +37,13 @@ public class ContractController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('contract:edit')")
-    public ApiResponse<Map<String, Object>> create(@Valid @RequestBody ContractService.CreateRequest request) {
+    public ApiResponse<Map<String, Object>> create(@Valid @RequestBody ContractCreateRequest request) {
         return ApiResponse.ok(Map.of("id", service.create(request)));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('contract:edit')")
-    public ApiResponse<Void> update(@PathVariable Long id, @Valid @RequestBody ContractService.UpdateRequest request) {
+    public ApiResponse<Void> update(@PathVariable Long id, @Valid @RequestBody ContractUpdateRequest request) {
         service.update(id, request);
         return ApiResponse.ok("合同已更新", null);
     }

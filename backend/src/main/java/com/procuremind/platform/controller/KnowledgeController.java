@@ -11,6 +11,11 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import com.procuremind.platform.pojo.request.KnowledgeCreateRequest;
+import com.procuremind.platform.pojo.request.KnowledgeUpdateRequest;
+import com.procuremind.platform.pojo.request.KnowledgeVersionRequest;
+import com.procuremind.platform.pojo.request.KnowledgeStatusRequest;
+import com.procuremind.platform.pojo.request.KnowledgeUploadRequest;
 
 /**
  * 知识库管理接口。原文上传走本模块自己的预签名策略，下载由服务层按可见范围授权。
@@ -52,32 +57,32 @@ public class KnowledgeController {
 
     @PostMapping("/uploads/presign")
     @PreAuthorize("hasAuthority('kb:manage')")
-    public ApiResponse<Map<String, Object>> presign(@Valid @RequestBody KnowledgeService.UploadRequest request) {
+    public ApiResponse<Map<String, Object>> presign(@Valid @RequestBody KnowledgeUploadRequest request) {
         return ApiResponse.ok(service.presignUpload(request));
     }
 
     @PostMapping("/documents")
     @PreAuthorize("hasAuthority('kb:manage')")
-    public ApiResponse<Map<String, Object>> create(@Valid @RequestBody KnowledgeService.CreateRequest request) {
+    public ApiResponse<Map<String, Object>> create(@Valid @RequestBody KnowledgeCreateRequest request) {
         return ApiResponse.ok(Map.of("id", service.create(request)));
     }
 
     @PutMapping("/documents/{id}")
     @PreAuthorize("hasAuthority('kb:manage')")
-    public ApiResponse<Void> update(@PathVariable Long id, @Valid @RequestBody KnowledgeService.UpdateRequest request) {
+    public ApiResponse<Void> update(@PathVariable Long id, @Valid @RequestBody KnowledgeUpdateRequest request) {
         service.update(id, request);
         return ApiResponse.ok("知识库文档已更新", null);
     }
 
     @PostMapping("/documents/{id}/versions")
     @PreAuthorize("hasAuthority('kb:manage')")
-    public ApiResponse<Map<String, Object>> addVersion(@PathVariable Long id, @Valid @RequestBody KnowledgeService.VersionRequest request) {
+    public ApiResponse<Map<String, Object>> addVersion(@PathVariable Long id, @Valid @RequestBody KnowledgeVersionRequest request) {
         return ApiResponse.ok(Map.of("version", service.addVersion(id, request)));
     }
 
     @PatchMapping("/documents/{id}/status")
     @PreAuthorize("hasAuthority('kb:manage')")
-    public ApiResponse<Void> changeStatus(@PathVariable Long id, @Valid @RequestBody KnowledgeService.StatusRequest request) {
+    public ApiResponse<Void> changeStatus(@PathVariable Long id, @Valid @RequestBody KnowledgeStatusRequest request) {
         service.changeStatus(id, request.status());
         return ApiResponse.ok("文档状态已更新", null);
     }

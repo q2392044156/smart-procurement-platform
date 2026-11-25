@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import java.util.Map;
 import java.time.Duration;
 import org.springframework.data.redis.core.ScanOptions;
+import com.procuremind.platform.pojo.UserRecord;
+import com.procuremind.platform.pojo.TokenPair;
 
 @Service
 public class AuthService {
@@ -26,7 +28,7 @@ public class AuthService {
         String failureKey = "login:fail:" + username.trim().toLowerCase(java.util.Locale.ROOT);
         String failures = redis.opsForValue().get(failureKey);
         if (failures != null && Long.parseLong(failures) >= 5) throw new BusinessException(HttpStatus.TOO_MANY_REQUESTS, "登录失败次数过多，请15分钟后重试");
-        UserDirectory.UserRecord row;
+        UserRecord row;
         try { row = users.byUsername(username); }
         catch (BusinessException e) { recordFailure(failureKey); throw e; }
         if (!row.enabled() || !encoder.matches(password, row.passwordHash())) { recordFailure(failureKey); throw new BusinessException(HttpStatus.UNAUTHORIZED, "用户名或密码错误"); }
@@ -60,5 +62,5 @@ public class AuthService {
         redis.opsForValue().set("refresh:" + claims.getId(), user.id().toString(), jwt.refreshTtl());
         return new TokenPair(access, refresh, 1800, user);
     }
-    public record TokenPair(String accessToken, String refreshToken, long expiresIn, CurrentUser user) {}
+    
 }

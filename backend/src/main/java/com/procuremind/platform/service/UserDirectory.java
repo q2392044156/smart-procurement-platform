@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import com.procuremind.platform.pojo.UserRecord;
 
 @Service
 public class UserDirectory {
@@ -33,5 +34,5 @@ public class UserDirectory {
                 (String) row.get("display_name"), ((Number) row.get("department_id")).longValue(), roles, permissions);
     }
 
-    public record UserRecord(Long id, String username, String passwordHash, String displayName, Long departmentId, boolean enabled) {}
+    
 }

@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import com.procuremind.platform.pojo.SqlFilter;
 
 @Service
 public class DataScopeService {
@@ -121,16 +122,5 @@ public class DataScopeService {
      * 供 MyBatis ${} 使用的内联片断。占位符的实参全部是服务端生成的 Long 或枚举名，
      * 不含用户输入，因此内联不引入注入面；用户输入一律走 #{} 绑定。
      */
-    public record SqlFilter(String clause, Object[] args) {
-        public String literal() {
-            StringBuilder out = new StringBuilder(clause.length() + 16);
-            int next = 0;
-            for (int i = 0; i < clause.length(); i++) {
-                char c = clause.charAt(i);
-                if (c == '?') out.append(args[next++]);
-                else out.append(c);
-            }
-            return out.toString();
-        }
-    }
+    
 }

@@ -9,6 +9,12 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import com.procuremind.platform.pojo.request.MaterialCategoryRequest;
+import com.procuremind.platform.pojo.request.MaterialRequest;
+import com.procuremind.platform.pojo.request.WarehouseRequest;
+import com.procuremind.platform.pojo.request.UnitRequest;
+import com.procuremind.platform.pojo.request.BrandRequest;
+import com.procuremind.platform.pojo.request.MasterDataStatusRequest;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -23,10 +29,10 @@ public class MasterDataController {
     }
     @GetMapping("/material-categories/{id}") public ApiResponse<Map<String,Object>> category(@PathVariable Long id){return ApiResponse.ok(service.category(id));}
     @PostMapping("/material-categories") @PreAuthorize("hasAnyAuthority('masterdata:edit','masterdata:category:edit')")
-    public ApiResponse<Map<String,Object>> createCategory(@Valid @RequestBody MasterDataService.CategoryRequest r) {
+    public ApiResponse<Map<String,Object>> createCategory(@Valid @RequestBody MaterialCategoryRequest r) {
         return ApiResponse.ok(Map.of("id",service.createCategory(r)));
     }
-    @PutMapping("/material-categories/{id}") @PreAuthorize("hasAnyAuthority('masterdata:edit','masterdata:category:edit')") public ApiResponse<Void> updateCategory(@PathVariable Long id,@Valid @RequestBody MasterDataService.CategoryRequest r){service.updateCategory(id,r);return ApiResponse.ok(null);}
+    @PutMapping("/material-categories/{id}") @PreAuthorize("hasAnyAuthority('masterdata:edit','masterdata:category:edit')") public ApiResponse<Void> updateCategory(@PathVariable Long id,@Valid @RequestBody MaterialCategoryRequest r){service.updateCategory(id,r);return ApiResponse.ok(null);}
     @DeleteMapping("/material-categories/{id}") @PreAuthorize("hasAnyAuthority('masterdata:edit','masterdata:category:edit')") public ApiResponse<Void> deleteCategory(@PathVariable Long id){service.deleteCategory(id);return ApiResponse.ok(null);}
     @GetMapping("/materials")
     public ApiResponse<List<Map<String,Object>>> materials(
@@ -50,32 +56,32 @@ public class MasterDataController {
         return ApiResponse.ok(service.materialsPage(keyword, brand, category, specification, trackingMode, current, size));
     }
     @PostMapping("/materials") @PreAuthorize("hasAnyAuthority('masterdata:edit','masterdata:material:edit')")
-    public ApiResponse<Map<String,Object>> createMaterial(@Valid @RequestBody MasterDataService.MaterialRequest r) {
+    public ApiResponse<Map<String,Object>> createMaterial(@Valid @RequestBody MaterialRequest r) {
         return ApiResponse.ok(Map.of("id",service.createMaterial(r)));
     }
-    @PutMapping("/materials/{id}") @PreAuthorize("hasAnyAuthority('masterdata:edit','masterdata:material:edit')") public ApiResponse<Void> updateMaterial(@PathVariable Long id,@Valid @RequestBody MasterDataService.MaterialRequest r){service.updateMaterial(id,r);return ApiResponse.ok(null);}
-    @PatchMapping("/materials/{id}/status") @PreAuthorize("hasAnyAuthority('masterdata:edit','masterdata:material:edit')") public ApiResponse<Void> materialStatus(@PathVariable Long id,@Valid @RequestBody MasterDataService.StatusRequest r){service.setMaterialStatus(id,r.enabled());return ApiResponse.ok(null);}
+    @PutMapping("/materials/{id}") @PreAuthorize("hasAnyAuthority('masterdata:edit','masterdata:material:edit')") public ApiResponse<Void> updateMaterial(@PathVariable Long id,@Valid @RequestBody MaterialRequest r){service.updateMaterial(id,r);return ApiResponse.ok(null);}
+    @PatchMapping("/materials/{id}/status") @PreAuthorize("hasAnyAuthority('masterdata:edit','masterdata:material:edit')") public ApiResponse<Void> materialStatus(@PathVariable Long id,@Valid @RequestBody MasterDataStatusRequest r){service.setMaterialStatus(id,r.enabled());return ApiResponse.ok(null);}
     @DeleteMapping("/materials/{id}") @PreAuthorize("hasAnyAuthority('masterdata:edit','masterdata:material:edit')") public ApiResponse<Void> deleteMaterial(@PathVariable Long id){service.deleteMaterial(id);return ApiResponse.ok(null);}
 
     @GetMapping("/warehouses") public ApiResponse<List<Map<String,Object>>> warehouses(){return ApiResponse.ok(service.warehouses());}
     @GetMapping("/warehouses/{id}") public ApiResponse<Map<String,Object>> warehouse(@PathVariable Long id){return ApiResponse.ok(service.warehouse(id));}
-    @PostMapping("/warehouses") @PreAuthorize("hasAuthority('masterdata:warehouse:edit')") public ApiResponse<Map<String,Object>> createWarehouse(@Valid @RequestBody MasterDataService.WarehouseRequest r){return ApiResponse.ok(Map.of("id",service.createWarehouse(r)));}
-    @PutMapping("/warehouses/{id}") @PreAuthorize("hasAuthority('masterdata:warehouse:edit')") public ApiResponse<Void> updateWarehouse(@PathVariable Long id,@Valid @RequestBody MasterDataService.WarehouseRequest r){service.updateWarehouse(id,r);return ApiResponse.ok(null);}
-    @PatchMapping("/warehouses/{id}/status") @PreAuthorize("hasAuthority('masterdata:warehouse:edit')") public ApiResponse<Void> warehouseStatus(@PathVariable Long id,@Valid @RequestBody MasterDataService.StatusRequest r){service.setWarehouseStatus(id,r.enabled());return ApiResponse.ok(null);}
+    @PostMapping("/warehouses") @PreAuthorize("hasAuthority('masterdata:warehouse:edit')") public ApiResponse<Map<String,Object>> createWarehouse(@Valid @RequestBody WarehouseRequest r){return ApiResponse.ok(Map.of("id",service.createWarehouse(r)));}
+    @PutMapping("/warehouses/{id}") @PreAuthorize("hasAuthority('masterdata:warehouse:edit')") public ApiResponse<Void> updateWarehouse(@PathVariable Long id,@Valid @RequestBody WarehouseRequest r){service.updateWarehouse(id,r);return ApiResponse.ok(null);}
+    @PatchMapping("/warehouses/{id}/status") @PreAuthorize("hasAuthority('masterdata:warehouse:edit')") public ApiResponse<Void> warehouseStatus(@PathVariable Long id,@Valid @RequestBody MasterDataStatusRequest r){service.setWarehouseStatus(id,r.enabled());return ApiResponse.ok(null);}
     @DeleteMapping("/warehouses/{id}") @PreAuthorize("hasAuthority('masterdata:warehouse:edit')") public ApiResponse<Void> deleteWarehouse(@PathVariable Long id){service.deleteWarehouse(id);return ApiResponse.ok(null);}
 
     @GetMapping("/units") public ApiResponse<List<Map<String,Object>>> units(){return ApiResponse.ok(service.units());}
     @GetMapping("/units/{id}") public ApiResponse<Map<String,Object>> unit(@PathVariable Long id){return ApiResponse.ok(service.unit(id));}
-    @PostMapping("/units") @PreAuthorize("hasAuthority('masterdata:unit:edit')") public ApiResponse<Map<String,Object>> createUnit(@Valid @RequestBody MasterDataService.UnitRequest r){return ApiResponse.ok(Map.of("id",service.createUnit(r)));}
-    @PutMapping("/units/{id}") @PreAuthorize("hasAuthority('masterdata:unit:edit')") public ApiResponse<Void> updateUnit(@PathVariable Long id,@Valid @RequestBody MasterDataService.UnitRequest r){service.updateUnit(id,r);return ApiResponse.ok(null);}
-    @PatchMapping("/units/{id}/status") @PreAuthorize("hasAuthority('masterdata:unit:edit')") public ApiResponse<Void> unitStatus(@PathVariable Long id,@Valid @RequestBody MasterDataService.StatusRequest r){service.setUnitStatus(id,r.enabled());return ApiResponse.ok(null);}
+    @PostMapping("/units") @PreAuthorize("hasAuthority('masterdata:unit:edit')") public ApiResponse<Map<String,Object>> createUnit(@Valid @RequestBody UnitRequest r){return ApiResponse.ok(Map.of("id",service.createUnit(r)));}
+    @PutMapping("/units/{id}") @PreAuthorize("hasAuthority('masterdata:unit:edit')") public ApiResponse<Void> updateUnit(@PathVariable Long id,@Valid @RequestBody UnitRequest r){service.updateUnit(id,r);return ApiResponse.ok(null);}
+    @PatchMapping("/units/{id}/status") @PreAuthorize("hasAuthority('masterdata:unit:edit')") public ApiResponse<Void> unitStatus(@PathVariable Long id,@Valid @RequestBody MasterDataStatusRequest r){service.setUnitStatus(id,r.enabled());return ApiResponse.ok(null);}
     @DeleteMapping("/units/{id}") @PreAuthorize("hasAuthority('masterdata:unit:edit')") public ApiResponse<Void> deleteUnit(@PathVariable Long id){service.deleteUnit(id);return ApiResponse.ok(null);}
 
     @GetMapping("/brands") public ApiResponse<List<Map<String,Object>>> brands(){return ApiResponse.ok(service.brands());}
     @GetMapping("/brands/{id}") public ApiResponse<Map<String,Object>> brand(@PathVariable Long id){return ApiResponse.ok(service.brand(id));}
-    @PostMapping("/brands") @PreAuthorize("hasAuthority('masterdata:brand:edit')") public ApiResponse<Map<String,Object>> createBrand(@Valid @RequestBody MasterDataService.BrandRequest r){return ApiResponse.ok(Map.of("id",service.createBrand(r)));}
-    @PutMapping("/brands/{id}") @PreAuthorize("hasAuthority('masterdata:brand:edit')") public ApiResponse<Void> updateBrand(@PathVariable Long id,@Valid @RequestBody MasterDataService.BrandRequest r){service.updateBrand(id,r);return ApiResponse.ok(null);}
-    @PatchMapping("/brands/{id}/status") @PreAuthorize("hasAuthority('masterdata:brand:edit')") public ApiResponse<Void> brandStatus(@PathVariable Long id,@Valid @RequestBody MasterDataService.StatusRequest r){service.setBrandStatus(id,r.enabled());return ApiResponse.ok(null);}
+    @PostMapping("/brands") @PreAuthorize("hasAuthority('masterdata:brand:edit')") public ApiResponse<Map<String,Object>> createBrand(@Valid @RequestBody BrandRequest r){return ApiResponse.ok(Map.of("id",service.createBrand(r)));}
+    @PutMapping("/brands/{id}") @PreAuthorize("hasAuthority('masterdata:brand:edit')") public ApiResponse<Void> updateBrand(@PathVariable Long id,@Valid @RequestBody BrandRequest r){service.updateBrand(id,r);return ApiResponse.ok(null);}
+    @PatchMapping("/brands/{id}/status") @PreAuthorize("hasAuthority('masterdata:brand:edit')") public ApiResponse<Void> brandStatus(@PathVariable Long id,@Valid @RequestBody MasterDataStatusRequest r){service.setBrandStatus(id,r.enabled());return ApiResponse.ok(null);}
     @DeleteMapping("/brands/{id}") @PreAuthorize("hasAuthority('masterdata:brand:edit')") public ApiResponse<Void> deleteBrand(@PathVariable Long id){service.deleteBrand(id);return ApiResponse.ok(null);}
 
 }

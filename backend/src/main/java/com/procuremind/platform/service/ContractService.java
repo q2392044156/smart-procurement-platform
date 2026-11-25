@@ -18,6 +18,8 @@ import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.procuremind.platform.pojo.request.ContractCreateRequest;
+import com.procuremind.platform.pojo.request.ContractUpdateRequest;
 
 /** 合同管理：供应商合同、可选关联采购订单、到期自动标记。 */
 @Service
@@ -54,7 +56,7 @@ public class ContractService {
     }
 
     @Transactional
-    public Long create(CreateRequest request) {
+    public Long create(ContractCreateRequest request) {
         validate(request);
         Long user = SecurityUtils.currentUser().id();
         String no = request.contractNo() == null || request.contractNo().isBlank()
@@ -66,7 +68,7 @@ public class ContractService {
     }
 
     @Transactional
-    public void update(Long id, UpdateRequest request) {
+    public void update(Long id, ContractUpdateRequest request) {
         Map<String, Object> contract = require(id);
         if (!List.of("DRAFT", "ACTIVE").contains(contract.get("status").toString())) {
             throw new BusinessException(HttpStatus.CONFLICT, "已到期或已终止的合同不能修改");
@@ -115,11 +117,11 @@ public class ContractService {
         Long purchaseOrderId;
         LocalDate startDate;
         LocalDate endDate;
-        if (request instanceof CreateRequest create) {
+        if (request instanceof ContractCreateRequest create) {
             supplierId = create.supplierId(); purchaseOrderId = create.purchaseOrderId();
             startDate = create.startDate(); endDate = create.endDate();
         } else {
-            UpdateRequest update = (UpdateRequest) request;
+            ContractUpdateRequest update = (ContractUpdateRequest) request;
             supplierId = update.supplierId(); purchaseOrderId = update.purchaseOrderId();
             startDate = update.startDate(); endDate = update.endDate();
         }
@@ -140,24 +142,7 @@ public class ContractService {
 
     private String blank(String value) { return value == null || value.isBlank() ? null : value.trim(); }
 
-    public record CreateRequest(
-            @Size(max = 50) String contractNo,
-            @NotBlank @Size(max = 200) String name,
-            @NotNull @Positive Long supplierId,
-            Long purchaseOrderId,
-            @NotBlank @Pattern(regexp = "FRAMEWORK|PURCHASE|SERVICE|NDA") String type,
-            @NotNull @DecimalMin("0") BigDecimal amount,
-            LocalDate signedDate, LocalDate startDate, LocalDate endDate,
-            Long fileId,
-            @Size(max = 500) String remark) {}
+    
 
-    public record UpdateRequest(
-            @NotBlank @Size(max = 200) String name,
-            @NotNull @Positive Long supplierId,
-            Long purchaseOrderId,
-            @NotBlank @Pattern(regexp = "FRAMEWORK|PURCHASE|SERVICE|NDA") String type,
-            @NotNull @DecimalMin("0") BigDecimal amount,
-            LocalDate signedDate, LocalDate startDate, LocalDate endDate,
-            Long fileId,
-            @Size(max = 500) String remark) {}
+    
 }

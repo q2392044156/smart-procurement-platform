@@ -19,7 +19,7 @@ JdbcTemplate / Flowable / Redis / MinIO（基础设施）
 - Controller 不依赖 `JdbcTemplate`；`LegacyErpController` 是遗留 ERP 兼容面，显式豁免。
 - Service 不依赖 `JdbcTemplate`，SQL 只能出现在 `mapper` 包与 `resources/mapper/` 下的 XML 里。
 - Service、Filter 不反向依赖 Controller。
-- `pojo` 保持独立，不依赖 `controller` / `service` / `filter` / `aop`。
+- `pojo` 保持独立，不依赖 `controller` / `service` / `filter` / `aop`。请求体统一放 `pojo/request`（41 个 record），响应壳 `ApiResponse`、`TokenPair`、`UserRecord`、`SqlFilter` 留在 `pojo` 根。
 
 ## 数据访问约定
 
@@ -29,6 +29,7 @@ JdbcTemplate / Flowable / Redis / MinIO（基础设施）
 - 可空参数显式写 `jdbcType`（`VARCHAR` / `BIGINT` / `DATE`），避免 null 绑定在部分驱动上报错。
 - `MapperXmlTest` 解析全部 XML 并断言「每个接口方法都有对应 statement」，`MyBatisWiringTest` 用 `ApplicationContextRunner` 断言 mapper bean 能注册；两者都不连数据库。
 - 已知缺口：`PlatformIntegrationTest`（Testcontainers）是唯一会真正执行这些 SQL 的测试，需要 Docker 才能跑。
+- `ApiContractTest` 把 20 个高频端点的响应形状沉成 `backend/src/test/resources/contract/api-shapes.json`：字段名、嵌套、标量类型变了就红，值变了不会。有意改契约时用 `-Dcontract.update=true` 重新生成，并把 json diff 一起提交。
 
 同一层内**不再按业务分包**：控制器在 `controller` 下平铺，服务在 `service` 下平铺，业务归属由类名表达（`RequisitionService`、`PurchaseOrderService`…）。跨业务调用只走对方 Service 的公开方法，不直接访问其 SQL。
 

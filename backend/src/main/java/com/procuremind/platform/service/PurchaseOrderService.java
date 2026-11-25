@@ -21,6 +21,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
+import com.procuremind.platform.pojo.request.PurchaseOrderDirectItem;
+import com.procuremind.platform.pojo.request.PurchaseOrderDirectRequest;
+import com.procuremind.platform.pojo.request.PurchaseOrderRequest;
+import com.procuremind.platform.pojo.request.PurchaseOrderUpdateItem;
+import com.procuremind.platform.pojo.request.PurchaseOrderUpdateRequest;
+import com.procuremind.platform.pojo.request.ReasonRequest;
 
 @Service
 public class PurchaseOrderService {
@@ -77,7 +83,7 @@ public class PurchaseOrderService {
     }
 
     @Transactional
-    public Long convert(Long requisitionId, Request r) {
+    public Long convert(Long requisitionId, PurchaseOrderRequest r) {
         dataScope.requireRequisition(requisitionId);
         Map<String, Object> req = mapper.lockRequisition(requisitionId);
         if (req == null) throw new BusinessException(HttpStatus.NOT_FOUND, "采购申请不存在");
@@ -118,7 +124,7 @@ public class PurchaseOrderService {
     }
 
     @Transactional
-    public void update(Long id, UpdateRequest r) {
+    public void update(Long id, PurchaseOrderUpdateRequest r) {
         Map<String, Object> order = orderForUpdate(id);
         requireOwner(order, true);
         if (!EDITABLE_STATUSES.contains(order.get("status").toString())) {
@@ -131,7 +137,7 @@ public class PurchaseOrderService {
         for (var item : existing) byId.put(((Number) item.get("id")).longValue(), item);
         Set<Long> supplied = new HashSet<>();
         BigDecimal total = BigDecimal.ZERO;
-        for (UpdateItem item : r.items()) {
+        for (PurchaseOrderUpdateItem item : r.items()) {
             if (!supplied.add(item.id()) || !byId.containsKey(item.id())) {
                 throw new BusinessException(HttpStatus.BAD_REQUEST, "订单明细不匹配");
             }
@@ -140,7 +146,7 @@ public class PurchaseOrderService {
         if (supplied.size() != byId.size()) throw new BusinessException(HttpStatus.BAD_REQUEST, "必须提交全部订单明细");
         Long user = SecurityUtils.currentUser().id();
         mapper.updateHeader(id, r.supplierId(), r.deliveryDate(), r.taxRate(), total, r.terms(), user);
-        for (UpdateItem item : r.items()) {
+        for (PurchaseOrderUpdateItem item : r.items()) {
             mapper.updateItemPrice(item.id(), id, item.unitPrice(), r.taxRate(), item.remark(), user);
         }
     }
@@ -219,23 +225,23 @@ public class PurchaseOrderService {
     // ==================== 直采订单（供 Agent / 内部接口使用） ====================
 
     @Transactional
-    public Map<String, Object> createDirect(DirectOrderRequest request) {
+    public Map<String, Object> createDirect(PurchaseOrderDirectRequest request) {
         var currentUser = SecurityUtils.currentUser();
         Long user = currentUser.id();
         Long supplierId = request.supplierId() == null ? defaultSupplier() : request.supplierId();
         requireQualifiedSupplier(supplierId);
-        List<DirectItem> items = requireDirectItems(request.items());
+        List<PurchaseOrderDirectItem> items = requireDirectItems(request.items());
         LocalDate delivery = request.deliveryDate() == null ? LocalDate.now().plusDays(7) : request.deliveryDate();
         if (delivery.isBefore(LocalDate.now())) throw badRequest("交付日期不能早于今天");
         BigDecimal taxRate = request.taxRate() == null ? new BigDecimal("0.13") : request.taxRate();
         if (taxRate.signum() < 0 || taxRate.compareTo(BigDecimal.ONE) > 0) throw badRequest("税率必须在 0~1 之间");
         BigDecimal total = BigDecimal.ZERO;
-        for (DirectItem item : items) total = total.add(item.quantity().multiply(item.unitPrice()));
+        for (PurchaseOrderDirectItem item : items) total = total.add(item.quantity().multiply(item.unitPrice()));
         budget.check(currentUser.departmentId(), total);
         String no = numbers.next("PO");
         mapper.insertHeader(no, null, supplierId, user, delivery, taxRate, total, blank(request.terms()), user);
         Long id = mapper.findIdByNo(no);
-        for (DirectItem item : items) {
+        for (PurchaseOrderDirectItem item : items) {
             mapper.insertItem(id, item.partId(), item.quantity(), item.unitPrice(), taxRate, blank(item.remark()), user);
         }
         Map<String, Object> result = new LinkedHashMap<>();
@@ -247,7 +253,7 @@ public class PurchaseOrderService {
     }
 
     @Transactional
-    public void updateDirect(Long id, DirectOrderRequest request) {
+    public void updateDirect(Long id, PurchaseOrderDirectRequest request) {
         Map<String, Object> order = orderForUpdate(id);
         requireOwner(order, true);
         if (!EDITABLE_STATUSES.contains(order.get("status").toString())) {
@@ -256,15 +262,15 @@ public class PurchaseOrderService {
         Long user = SecurityUtils.currentUser().id();
         Long supplierId = request.supplierId() == null ? ((Number) order.get("supplier_id")).longValue() : request.supplierId();
         requireQualifiedSupplier(supplierId);
-        List<DirectItem> items = requireDirectItems(request.items());
+        List<PurchaseOrderDirectItem> items = requireDirectItems(request.items());
         LocalDate delivery = request.deliveryDate() == null ? LocalDate.now().plusDays(7) : request.deliveryDate();
         if (delivery.isBefore(LocalDate.now())) throw badRequest("交付日期不能早于今天");
         BigDecimal taxRate = request.taxRate() == null ? new BigDecimal("0.13") : request.taxRate();
         if (taxRate.signum() < 0 || taxRate.compareTo(BigDecimal.ONE) > 0) throw badRequest("税率必须在 0~1 之间");
         BigDecimal total = BigDecimal.ZERO;
-        for (DirectItem item : items) total = total.add(item.quantity().multiply(item.unitPrice()));
+        for (PurchaseOrderDirectItem item : items) total = total.add(item.quantity().multiply(item.unitPrice()));
         mapper.softDeleteItems(id, user);
-        for (DirectItem item : items) {
+        for (PurchaseOrderDirectItem item : items) {
             mapper.insertItem(id, item.partId(), item.quantity(), item.unitPrice(), taxRate, blank(item.remark()), user);
         }
         mapper.updateDirectHeader(id, supplierId, delivery, taxRate, total, blank(request.terms()), user);
@@ -280,10 +286,10 @@ public class PurchaseOrderService {
         if (mapper.countQualifiedSupplier(supplierId) == 0) throw badRequest("供应商未处于合格状态");
     }
 
-    private List<DirectItem> requireDirectItems(List<DirectItem> items) {
+    private List<PurchaseOrderDirectItem> requireDirectItems(List<PurchaseOrderDirectItem> items) {
         if (items == null || items.isEmpty()) throw badRequest("订单明细不能为空");
         Set<Long> seen = new HashSet<>();
-        for (DirectItem item : items) {
+        for (PurchaseOrderDirectItem item : items) {
             if (item == null || item.partId() == null) throw badRequest("订单明细缺少物资");
             if (!seen.add(item.partId())) throw badRequest("同一物资不能重复添加");
             if (item.quantity() == null || item.quantity().signum() <= 0) throw badRequest("数量必须大于 0");
@@ -312,10 +318,10 @@ public class PurchaseOrderService {
         return mapper.priceHistory(materialId, dataScope.purchaseOrderScope("o", "u"));
     }
 
-    public record Request(@NotNull Long supplierId, @NotNull @FutureOrPresent LocalDate deliveryDate, @NotNull @DecimalMin("0") @DecimalMax("1") BigDecimal taxRate, @Size(max=1000) String terms, Map<String,BigDecimal> priceOverrides) {}
-    public record UpdateRequest(@NotNull Long supplierId, @NotNull @FutureOrPresent LocalDate deliveryDate, @NotNull @DecimalMin("0") @DecimalMax("1") BigDecimal taxRate, @Size(max=1000) String terms, @NotEmpty @Size(max=100) List<@Valid UpdateItem> items) {}
-    public record UpdateItem(@NotNull Long id, @NotNull @DecimalMin("0") BigDecimal unitPrice, @Size(max=500) String remark) {}
-    public record ReasonRequest(@NotBlank @Size(max=500) String reason) {}
-    public record DirectOrderRequest(Long supplierId, @FutureOrPresent LocalDate deliveryDate, @DecimalMin("0") @DecimalMax("1") BigDecimal taxRate, @Size(max=1000) String terms, @NotEmpty @Size(max=100) List<@Valid DirectItem> items) {}
-    public record DirectItem(@NotNull Long partId, @NotNull @DecimalMin(value="0",inclusive=false) BigDecimal quantity, @NotNull @DecimalMin("0") BigDecimal unitPrice, @Size(max=500) String remark) {}
+    
+    
+    
+    
+    
+    
 }

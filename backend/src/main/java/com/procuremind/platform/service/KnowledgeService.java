@@ -21,6 +21,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.procuremind.platform.pojo.request.KnowledgeAclEntry;
+import com.procuremind.platform.pojo.request.KnowledgeCreateRequest;
+import com.procuremind.platform.pojo.request.KnowledgeUpdateRequest;
+import com.procuremind.platform.pojo.request.KnowledgeUploadRequest;
+import com.procuremind.platform.pojo.request.KnowledgeVersionRequest;
 
 /**
  * 知识库文档管理：元数据、版本、可见范围与下载授权。
@@ -109,7 +114,7 @@ public class KnowledgeService {
         return mapper.changedSince(java.sql.Timestamp.from(since));
     }
 
-    public Map<String, Object> presignUpload(UploadRequest request) {
+    public Map<String, Object> presignUpload(KnowledgeUploadRequest request) {
         requireManage();
         return files.presignUpload(request.fileName().trim(), request.contentType(), request.size());
     }
@@ -117,7 +122,7 @@ public class KnowledgeService {
     // ==================== 写入 ====================
 
     @Transactional
-    public Long create(CreateRequest request) {
+    public Long create(KnowledgeCreateRequest request) {
         requireManage();
         validatePeriod(request.effectiveFrom(), request.effectiveTo());
         if ("CUSTOM".equals(request.visibility())) validateAcl(request.acl());
@@ -140,7 +145,7 @@ public class KnowledgeService {
     }
 
     @Transactional
-    public void update(Long id, UpdateRequest request) {
+    public void update(Long id, KnowledgeUpdateRequest request) {
         requireManage();
         Map<String, Object> row = requireDocument(id);
         if ("ARCHIVED".equals(row.get("status"))) throw conflict("已归档文档不能修改，请先重新发布");
@@ -156,7 +161,7 @@ public class KnowledgeService {
     }
 
     @Transactional
-    public int addVersion(Long id, VersionRequest request) {
+    public int addVersion(Long id, KnowledgeVersionRequest request) {
         requireManage();
         Map<String, Object> row = requireDocument(id);
         if ("ARCHIVED".equals(row.get("status"))) throw conflict("已归档文档不能新增版本，请先重新发布");
@@ -240,9 +245,9 @@ public class KnowledgeService {
         }
     }
 
-    private void validateAcl(List<AclEntry> acl) {
+    private void validateAcl(List<KnowledgeAclEntry> acl) {
         if (acl == null || acl.isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "自定义可见范围至少需要指定一个用户或角色");
-        for (AclEntry entry : acl) {
+        for (KnowledgeAclEntry entry : acl) {
             if ("USER".equals(entry.subjectType())) {
                 long id;
                 try { id = Long.parseLong(entry.subjectKey().trim()); }
@@ -254,10 +259,10 @@ public class KnowledgeService {
         }
     }
 
-    private void replaceAcl(Long documentId, String visibility, List<AclEntry> acl, Long user) {
+    private void replaceAcl(Long documentId, String visibility, List<KnowledgeAclEntry> acl, Long user) {
         mapper.deleteAcl(documentId);
         if (!"CUSTOM".equals(visibility) || acl == null) return;
-        for (AclEntry entry : acl) {
+        for (KnowledgeAclEntry entry : acl) {
             mapper.insertAcl(documentId, entry.subjectType(), entry.subjectKey().trim(), user);
         }
     }
@@ -308,43 +313,15 @@ public class KnowledgeService {
 
     // ==================== 请求模型 ====================
 
-    public record CreateRequest(
-            @Size(max = 50) String code,
-            @NotBlank @Size(max = 200) String title,
-            @NotBlank @Pattern(regexp = CATEGORY) String category,
-            @Size(max = 500) String summary,
-            @Size(max = 300) String tags,
-            Long ownerDepartmentId,
-            @NotBlank @Pattern(regexp = VISIBILITY) String visibility,
-            @NotNull @Positive Long fileId,
-            LocalDate effectiveFrom,
-            LocalDate effectiveTo,
-            List<AclEntry> acl,
-            @Size(max = 300) String changeNote) {}
+    
 
-    public record UpdateRequest(
-            @NotBlank @Size(max = 200) String title,
-            @NotBlank @Pattern(regexp = CATEGORY) String category,
-            @Size(max = 500) String summary,
-            @Size(max = 300) String tags,
-            Long ownerDepartmentId,
-            @NotBlank @Pattern(regexp = VISIBILITY) String visibility,
-            LocalDate effectiveFrom,
-            LocalDate effectiveTo,
-            List<AclEntry> acl) {}
+    
 
-    public record AclEntry(@NotBlank @Pattern(regexp = "USER|ROLE") String subjectType, @NotBlank @Size(max = 64) String subjectKey) {}
+    
 
-    public record VersionRequest(@NotNull @Positive Long fileId, @Size(max = 300) String changeNote) {}
+    
 
-    public record StatusRequest(@NotBlank @Pattern(regexp = STATUS) String status) {}
+    
 
-    public record UploadRequest(
-            @NotBlank @Size(max = 255) String fileName,
-            @NotBlank @Pattern(regexp = "application/pdf|application/msword"
-                    + "|application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    + "|application/vnd.ms-excel|application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    + "|application/vnd.ms-powerpoint|application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                    + "|text/plain|text/markdown") String contentType,
-            @NotNull @Positive @Max(52428800) Long size) {}
+    
 }

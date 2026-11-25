@@ -12,6 +12,12 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.procuremind.platform.pojo.request.MaterialCategoryRequest;
+import com.procuremind.platform.pojo.request.MaterialAttributeRequest;
+import com.procuremind.platform.pojo.request.MaterialRequest;
+import com.procuremind.platform.pojo.request.WarehouseRequest;
+import com.procuremind.platform.pojo.request.UnitRequest;
+import com.procuremind.platform.pojo.request.BrandRequest;
 
 class MasterDataValidationTest {
     private static final ValidatorFactory FACTORY = Validation.buildDefaultValidatorFactory();
@@ -21,9 +27,9 @@ class MasterDataValidationTest {
 
     @Test
     void warehouseUnitAndBrandRejectInvalidInput() {
-        var warehouse = new MasterDataService.WarehouseRequest("bad code", "", "x".repeat(301), "x".repeat(101));
-        var unit = new MasterDataService.UnitRequest("bad-code", "", 7);
-        var brand = new MasterDataService.BrandRequest("1BAD", "");
+        var warehouse = new WarehouseRequest("bad code", "", "x".repeat(301), "x".repeat(101));
+        var unit = new UnitRequest("bad-code", "", 7);
+        var brand = new BrandRequest("1BAD", "");
 
         assertThat(VALIDATOR.validate(warehouse)).extracting(v -> v.getPropertyPath().toString())
                 .contains("code", "name", "address", "manager");
@@ -35,15 +41,15 @@ class MasterDataValidationTest {
 
     @Test
     void categoryAndMaterialValidateStableCodesAndRanges() {
-        var attribute = new MasterDataService.AttributeRequest("voltage", "额定电压", "NUMBER", true, null, 1);
-        var category = new MasterDataService.CategoryRequest(null, "MOTOR_PARTS", "电机配件", "测试分类", 10, List.of(attribute));
-        var material = new MasterDataService.MaterialRequest(
+        var attribute = new MaterialAttributeRequest("voltage", "额定电压", "NUMBER", true, null, 1);
+        var category = new MaterialCategoryRequest(null, "MOTOR_PARTS", "电机配件", "测试分类", 10, List.of(attribute));
+        var material = new MaterialRequest(
                 "MOTOR.001", "测试电机", 1L, 1L, null, "380V", "SERIAL", new BigDecimal("1.00"), Map.of("voltage", 380));
 
         assertThat(VALIDATOR.validate(category)).isEmpty();
         assertThat(VALIDATOR.validate(material)).isEmpty();
 
-        var invalidMaterial = new MasterDataService.MaterialRequest(
+        var invalidMaterial = new MaterialRequest(
                 "bad code", "", 0L, 0L, -1L, "x".repeat(501), "INVALID", new BigDecimal("-1"), Map.of());
         assertThat(VALIDATOR.validate(invalidMaterial)).extracting(v -> v.getPropertyPath().toString())
                 .contains("code", "name", "categoryId", "unitId", "brandId", "specification", "trackingMode", "minStock");

@@ -24,6 +24,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import com.procuremind.platform.pojo.request.ReasonRequest;
+import com.procuremind.platform.pojo.request.RequisitionItem;
+import com.procuremind.platform.pojo.request.RequisitionRequest;
 
 @Service
 public class RequisitionService {
@@ -79,7 +82,7 @@ public class RequisitionService {
     }
 
     @Transactional
-    public Long create(Request r) {
+    public Long create(RequisitionRequest r) {
         CurrentUser user = SecurityUtils.currentUser();
         validate(r);
         String requisitionNo = numbers.next("PR");
@@ -91,7 +94,7 @@ public class RequisitionService {
     }
 
     @Transactional
-    public void update(Long id, Request r) {
+    public void update(Long id, RequisitionRequest r) {
         Map<String, Object> row = lock(id);
         requireOwner(row, false);
         if (!EDITABLE_STATUSES.contains(row.get("status").toString())) {
@@ -159,13 +162,13 @@ public class RequisitionService {
         }
     }
 
-    private void insertItems(Long id, List<Item> items, Long user) {
-        for (Item item : items) {
+    private void insertItems(Long id, List<RequisitionItem> items, Long user) {
+        for (RequisitionItem item : items) {
             mapper.insertItem(id, item.materialId(), item.quantity(), item.estimatedUnitPrice(), item.remark(), user);
         }
     }
 
-    private void validate(Request r) {
+    private void validate(RequisitionRequest r) {
         if (r.requiredDate().isBefore(LocalDate.now())) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "需求日期不能早于今天");
         }
@@ -173,7 +176,7 @@ public class RequisitionService {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "至少添加一条采购明细");
         }
         Set<Long> materialIds = new HashSet<>();
-        for (Item item : r.items()) {
+        for (RequisitionItem item : r.items()) {
             if (item.quantity() == null || item.quantity().signum() <= 0
                     || item.estimatedUnitPrice() == null || item.estimatedUnitPrice().signum() < 0) {
                 throw new BusinessException(HttpStatus.BAD_REQUEST, "数量必须大于0且价格不能为负数");
@@ -187,20 +190,15 @@ public class RequisitionService {
         }
     }
 
-    private BigDecimal total(List<Item> items) {
+    private BigDecimal total(List<RequisitionItem> items) {
         return items.stream()
                 .map(item -> item.quantity().multiply(item.estimatedUnitPrice()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    public record Request(@NotNull @FutureOrPresent LocalDate requiredDate,
-                          @NotBlank @Size(max = 500) String purpose,
-                          @NotEmpty @Size(max = 100) List<@Valid Item> items) {}
+    
 
-    public record Item(@NotNull Long materialId,
-                       @NotNull @DecimalMin(value = "0", inclusive = false) BigDecimal quantity,
-                       @NotNull @DecimalMin("0") BigDecimal estimatedUnitPrice,
-                       @Size(max = 500) String remark) {}
+    
 
-    public record ReasonRequest(@NotBlank @Size(max = 500) String reason) {}
+    
 }

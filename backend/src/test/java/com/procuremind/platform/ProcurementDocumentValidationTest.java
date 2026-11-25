@@ -14,6 +14,10 @@ import java.time.LocalDate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import com.procuremind.platform.pojo.request.AttachmentRequest;
+import com.procuremind.platform.pojo.request.PurchaseOrderUpdateRequest;
+import com.procuremind.platform.pojo.request.PurchaseOrderUpdateItem;
+import com.procuremind.platform.pojo.request.ReasonRequest;
 
 class ProcurementDocumentValidationTest {
     private static final ValidatorFactory FACTORY = Validation.buildDefaultValidatorFactory();
@@ -23,17 +27,17 @@ class ProcurementDocumentValidationTest {
 
     @Test
     void cancellationRequiresAReason(){
-        assertThat(VALIDATOR.validate(new RequisitionService.ReasonRequest(" "))).isNotEmpty();
-        assertThat(VALIDATOR.validate(new PurchaseOrderService.ReasonRequest("业务计划调整"))).isEmpty();
+        assertThat(VALIDATOR.validate(new ReasonRequest(" "))).isNotEmpty();
+        assertThat(VALIDATOR.validate(new ReasonRequest("业务计划调整"))).isEmpty();
     }
 
     @Test
     void purchaseOrderUpdateValidatesCommercialTermsAndAllItems(){
-        var valid = new PurchaseOrderService.UpdateRequest(1L, LocalDate.now().plusDays(1), new BigDecimal("0.13"),
-                "验收合格后付款", List.of(new PurchaseOrderService.UpdateItem(1L, new BigDecimal("1200.00"), "测试")));
+        var valid = new PurchaseOrderUpdateRequest(1L, LocalDate.now().plusDays(1), new BigDecimal("0.13"),
+                "验收合格后付款", List.of(new PurchaseOrderUpdateItem(1L, new BigDecimal("1200.00"), "测试")));
         assertThat(VALIDATOR.validate(valid)).isEmpty();
 
-        var invalid = new PurchaseOrderService.UpdateRequest(null, LocalDate.now().minusDays(1), new BigDecimal("1.10"),
+        var invalid = new PurchaseOrderUpdateRequest(null, LocalDate.now().minusDays(1), new BigDecimal("1.10"),
                 "x".repeat(1001), List.of());
         assertThat(VALIDATOR.validate(invalid)).extracting(v -> v.getPropertyPath().toString())
                 .contains("supplierId", "deliveryDate", "taxRate", "terms", "items");
@@ -41,7 +45,7 @@ class ProcurementDocumentValidationTest {
 
     @Test
     void attachmentRequiresExistingPositiveFileAndSupportedCategory(){
-        var invalid = new BusinessAttachmentService.AttachmentRequest(0L, "EXECUTABLE", "x".repeat(301));
+        var invalid = new AttachmentRequest(0L, "EXECUTABLE", "x".repeat(301));
         assertThat(VALIDATOR.validate(invalid)).extracting(v -> v.getPropertyPath().toString())
                 .contains("fileId", "category", "note");
     }

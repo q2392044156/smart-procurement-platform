@@ -25,6 +25,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.procuremind.platform.pojo.request.BrandRequest;
+import com.procuremind.platform.pojo.request.MaterialAttributeRequest;
+import com.procuremind.platform.pojo.request.MaterialCategoryRequest;
+import com.procuremind.platform.pojo.request.MaterialRequest;
+import com.procuremind.platform.pojo.request.UnitRequest;
+import com.procuremind.platform.pojo.request.WarehouseRequest;
 
 @Service
 public class MasterDataService {
@@ -49,7 +55,7 @@ public class MasterDataService {
     }
 
     @Transactional
-    public Long createCategory(CategoryRequest request) {
+    public Long createCategory(MaterialCategoryRequest request) {
         validateCategoryRequest(null, request);
         Long operator = SecurityUtils.currentUser().id();
         mapper.insertCategory(request.parentId(), request.code(), request.name(), request.description(),
@@ -60,7 +66,7 @@ public class MasterDataService {
     }
 
     @Transactional
-    public void updateCategory(Long id, CategoryRequest request) {
+    public void updateCategory(Long id, MaterialCategoryRequest request) {
         requireCategory(id);
         validateCategoryRequest(id, request);
         validateExistingMaterialAttributes(id, request.attributes());
@@ -273,7 +279,7 @@ public class MasterDataService {
         mapper.softDeleteBrand(id, SecurityUtils.currentUser().id());
     }
 
-    private void validateCategoryRequest(Long id, CategoryRequest request) {
+    private void validateCategoryRequest(Long id, MaterialCategoryRequest request) {
         validateAttributeDefinitions(request.attributes());
         if (request.parentId() != null) {
             requireCategory(request.parentId());
@@ -281,10 +287,10 @@ public class MasterDataService {
         }
     }
 
-    private void validateAttributeDefinitions(List<AttributeRequest> definitions) {
+    private void validateAttributeDefinitions(List<MaterialAttributeRequest> definitions) {
         if (definitions == null) return;
         Set<String> codes = new HashSet<>();
-        for (AttributeRequest definition : definitions) {
+        for (MaterialAttributeRequest definition : definitions) {
             if (!codes.add(definition.code())) throw new BusinessException(HttpStatus.BAD_REQUEST, "动态属性编码不能重复");
             if ("ENUM".equals(definition.valueType()) && (definition.options() == null || definition.options().isEmpty()))
                 throw new BusinessException(HttpStatus.BAD_REQUEST, definition.name() + "必须配置枚举选项");
@@ -293,8 +299,8 @@ public class MasterDataService {
         }
     }
 
-    private void validateExistingMaterialAttributes(Long categoryId, List<AttributeRequest> definitions) {
-        Map<String, AttributeRequest> next = new LinkedHashMap<>();
+    private void validateExistingMaterialAttributes(Long categoryId, List<MaterialAttributeRequest> definitions) {
+        Map<String, MaterialAttributeRequest> next = new LinkedHashMap<>();
         if (definitions != null) definitions.forEach(definition -> next.put(definition.code(), definition));
         Set<String> previousCodes = new HashSet<>();
         attributes(categoryId).forEach(attribute -> previousCodes.add(attribute.get("code").toString()));
@@ -317,18 +323,18 @@ public class MasterDataService {
         requireCategory(request.categoryId());
         requireUnit(request.unitId(), true);
         if (request.brandId() != null) requireBrand(request.brandId(), true);
-        Map<String, AttributeRequest> definitions = new LinkedHashMap<>();
+        Map<String, MaterialAttributeRequest> definitions = new LinkedHashMap<>();
         for (Map<String, Object> row : attributes(request.categoryId())) {
-            definitions.put(row.get("code").toString(), new AttributeRequest(row.get("code").toString(), row.get("name").toString(),
+            definitions.put(row.get("code").toString(), new MaterialAttributeRequest(row.get("code").toString(), row.get("name").toString(),
                     row.get("valueType").toString(), booleanValue(row.get("required")), parseOptions(row.get("options")),
                     row.get("sortOrder") == null ? 0 : Integer.valueOf(row.get("sortOrder").toString())));
         }
         validateAttributes(definitions, request.attributes() == null ? Map.of() : request.attributes());
     }
 
-    private void validateAttributes(Map<String, AttributeRequest> definitions, Map<String, Object> values) {
+    private void validateAttributes(Map<String, MaterialAttributeRequest> definitions, Map<String, Object> values) {
         for (String code : values.keySet()) if (!definitions.containsKey(code)) throw new BusinessException(HttpStatus.BAD_REQUEST, "存在未定义的动态属性：" + code);
-        for (AttributeRequest definition : definitions.values()) {
+        for (MaterialAttributeRequest definition : definitions.values()) {
             Object value = values.get(definition.code());
             if (Boolean.TRUE.equals(definition.required()) && (value == null || value.toString().isBlank()))
                 throw new BusinessException(HttpStatus.BAD_REQUEST, definition.name() + "不能为空");
@@ -336,7 +342,7 @@ public class MasterDataService {
         }
     }
 
-    private void validateAttributeValue(AttributeRequest definition, Object value) {
+    private void validateAttributeValue(MaterialAttributeRequest definition, Object value) {
         try {
             switch (definition.valueType()) {
                 case "NUMBER" -> new BigDecimal(value.toString());
@@ -358,10 +364,10 @@ public class MasterDataService {
         return mapper.listCategoryAttributes(categoryId);
     }
 
-    private void replaceAttributes(Long categoryId, List<AttributeRequest> definitions) {
+    private void replaceAttributes(Long categoryId, List<MaterialAttributeRequest> definitions) {
         mapper.deleteCategoryAttributes(categoryId);
         if (definitions == null) return;
-        for (AttributeRequest definition : definitions) {
+        for (MaterialAttributeRequest definition : definitions) {
             mapper.insertCategoryAttribute(categoryId, definition.code(), definition.name(), definition.valueType(),
                     Boolean.TRUE.equals(definition.required()), json(definition.options()), defaultSort(definition.sortOrder()));
         }
@@ -445,47 +451,17 @@ public class MasterDataService {
     private BusinessException conflict(String message) { return new BusinessException(HttpStatus.CONFLICT, message); }
     private BusinessException notFound(String message) { return new BusinessException(HttpStatus.NOT_FOUND, message); }
 
-    public record CategoryRequest(
-            @Positive Long parentId,
-            @NotBlank @Pattern(regexp = "[A-Z][A-Z0-9_-]{1,49}", message = "分类编码需为大写字母开头") String code,
-            @NotBlank @Size(max = 100) String name,
-            @Size(max = 500) String description,
-            @Min(0) Integer sortOrder,
-            @Size(max = 30) List<@Valid AttributeRequest> attributes) {}
+    
 
-    public record AttributeRequest(
-            @NotBlank @Pattern(regexp = "[A-Za-z][A-Za-z0-9_]{1,49}", message = "属性编码格式不正确") String code,
-            @NotBlank @Size(max = 100) String name,
-            @NotBlank @Pattern(regexp = "TEXT|NUMBER|BOOLEAN|DATE|ENUM") String valueType,
-            Boolean required,
-            @Size(max = 50) List<@NotBlank @Size(max = 100) String> options,
-            @Min(0) Integer sortOrder) {}
+    
 
-    public record MaterialRequest(
-            @NotBlank @Pattern(regexp = "[A-Z0-9][A-Z0-9._-]{1,49}", message = "物资编码格式不正确") String code,
-            @NotBlank @Size(max = 200) String name,
-            @NotNull @Positive Long categoryId,
-            @NotNull @Positive Long unitId,
-            @Positive Long brandId,
-            @Size(max = 500) String specification,
-            @NotBlank @Pattern(regexp = "QUANTITY|BATCH|SERIAL") String trackingMode,
-            @DecimalMin("0") BigDecimal minStock,
-            @Size(max = 30) Map<String, Object> attributes) {}
+    
 
-    public record WarehouseRequest(
-            @NotBlank @Pattern(regexp = "[A-Z][A-Z0-9_-]{1,49}", message = "仓库编码格式不正确") String code,
-            @NotBlank @Size(max = 100) String name,
-            @Size(max = 300) String address,
-            @Size(max = 100) String manager) {}
+    
 
-    public record UnitRequest(
-            @NotBlank @Pattern(regexp = "[A-Z][A-Z0-9_-]{0,29}", message = "单位编码格式不正确") String code,
-            @NotBlank @Size(max = 50) String name,
-            @NotNull @Min(0) @Max(6) Integer precisionScale) {}
+    
 
-    public record BrandRequest(
-            @NotBlank @Pattern(regexp = "[A-Z][A-Z0-9_-]{1,49}", message = "品牌编码格式不正确") String code,
-            @NotBlank @Size(max = 100) String name) {}
+    
 
-    public record StatusRequest(@NotNull Boolean enabled) {}
+    
 }

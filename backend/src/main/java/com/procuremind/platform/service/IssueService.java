@@ -19,6 +19,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import com.procuremind.platform.pojo.request.IssueRequest;
 
 /**
  * 出库/领用：扣减库存余额、批次与序列号，并向不可变流水写入 OUT 方向记录。
@@ -130,13 +131,5 @@ public class IssueService {
     private String blank(String value) { return value == null || value.isBlank() ? null : value.trim(); }
     private BusinessException badRequest(String message) { return new BusinessException(HttpStatus.BAD_REQUEST, message); }
 
-    public record IssueRequest(
-            @NotNull @Positive Long warehouseId,
-            @NotNull @Positive Long materialId,
-            @NotNull @DecimalMin(value = "0", inclusive = false) BigDecimal quantity,
-            @Size(max = 100) String batchNo,
-            List<@Size(max = 200) String> serialNumbers,
-            @NotBlank @Size(max = 200) String purpose,
-            Long departmentId,
-            @Size(max = 500) String remark) {}
+    
 }

@@ -22,6 +22,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.procuremind.platform.pojo.request.ReceiptItem;
+import com.procuremind.platform.pojo.request.ReceiptRequest;
 
 @Service
 public class ReceiptService {
@@ -36,7 +38,7 @@ public class ReceiptService {
     }
 
     @Transactional
-    public Map<String, Object> receive(String key, Request r) {
+    public Map<String, Object> receive(String key, ReceiptRequest r) {
         if (key == null || key.isBlank() || key.length() > 100) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "必须提供不超过100字符的Idempotency-Key");
         }
@@ -67,7 +69,7 @@ public class ReceiptService {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "收货明细不能为空");
         }
         Set<Long> orderItems = new HashSet<>();
-        for (Item item : r.items()) {
+        for (ReceiptItem item : r.items()) {
             if (!orderItems.add(item.orderItemId())) {
                 throw new BusinessException(HttpStatus.BAD_REQUEST, "同一订单明细不能重复收货");
             }
@@ -77,7 +79,7 @@ public class ReceiptService {
         mapper.insertReceipt(no, r.purchaseOrderId(), r.warehouseId(), user, Instant.now(), r.remark());
         Long receiptId = mapper.findIdByNo(no);
 
-        for (Item input : r.items()) {
+        for (ReceiptItem input : r.items()) {
             Map<String, Object> item = mapper.lockOrderItem(input.orderItemId(), r.purchaseOrderId());
             if (item == null) {
                 throw new BusinessException(HttpStatus.CONFLICT, "订单明细不存在");
@@ -137,7 +139,7 @@ public class ReceiptService {
         throw new BusinessException(HttpStatus.CONFLICT, "库存被并发更新，请重试");
     }
 
-    private void validateTracking(String mode, Item item) {
+    private void validateTracking(String mode, ReceiptItem item) {
         if ("BATCH".equals(mode) && (item.batchNo() == null || item.batchNo().isBlank())) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "批次物资必须填写批次号");
         }
@@ -165,12 +167,7 @@ public class ReceiptService {
         }
     }
 
-    public record Request(@NotNull Long purchaseOrderId, @NotNull Long warehouseId, @Size(max = 500) String remark,
-                          @NotEmpty @Size(max = 100) List<@Valid Item> items) {
-    }
+    
 
-    public record Item(@NotNull Long orderItemId,
-                       @NotNull @DecimalMin(value = "0", inclusive = false) BigDecimal quantity,
-                       @Size(max = 100) String batchNo, List<@Size(max = 200) String> serialNumbers) {
-    }
+    
 }

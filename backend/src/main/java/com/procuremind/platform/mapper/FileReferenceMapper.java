@@ -2,6 +2,7 @@ package com.procuremind.platform.mapper;
 
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import com.procuremind.platform.service.FileReferenceChecker;
 
 /** 文件被引用情况的计数查询，供各业务模块的 FileReferenceChecker 使用。 */
 @Mapper

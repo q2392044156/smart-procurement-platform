@@ -19,6 +19,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.procuremind.platform.pojo.request.DepartmentRequest;
+import com.procuremind.platform.pojo.request.RoleRequest;
+import com.procuremind.platform.pojo.request.UserCreateRequest;
+import com.procuremind.platform.pojo.request.UserUpdateRequest;
 
 @Service
 public class SystemManagementService {
@@ -273,32 +277,15 @@ public class SystemManagementService {
         return new BusinessException(HttpStatus.CONFLICT, message);
     }
 
-    public record UserCreateRequest(
-            @NotBlank @Pattern(regexp = "[A-Za-z][A-Za-z0-9._-]{2,63}", message = "用户名格式不正确") String username,
-            @NotBlank @Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z\\d]).{8,72}$", message = "密码至少8位且需包含大小写字母、数字和特殊字符") String password,
-            @NotBlank @Size(max = 100) String displayName,
-            @NotNull @Positive Long departmentId,
-            @NotEmpty Set<@Positive Long> roleIds) {}
+    
 
-    public record UserUpdateRequest(
-            @NotBlank @Size(max = 100) String displayName,
-            @NotNull @Positive Long departmentId,
-            @NotEmpty Set<@Positive Long> roleIds) {}
+    
 
-    public record ResetPasswordRequest(
-            @NotBlank @Pattern(regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z\\d]).{8,72}$", message = "密码至少8位且需包含大小写字母、数字和特殊字符") String password) {}
+    
 
-    public record StatusRequest(@NotNull Boolean enabled) {}
+    
 
-    public record DepartmentRequest(
-            @Positive Long parentId,
-            @NotBlank @Pattern(regexp = "[A-Z][A-Z0-9_-]{1,49}", message = "部门编码需为大写字母开头") String code,
-            @NotBlank @Size(max = 100) String name,
-            Integer sortOrder) {}
+    
 
-    public record RoleRequest(
-            @NotBlank @Pattern(regexp = "[A-Z][A-Z0-9_]{2,63}", message = "角色编码需为大写字母和下划线") String code,
-            @NotBlank @Size(max = 100) String name,
-            @NotBlank String dataScope,
-            @NotNull Set<@Positive Long> permissionIds) {}
+    
 }

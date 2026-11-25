@@ -5,6 +5,7 @@ import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
+import com.procuremind.platform.controller.LegacyErpController;
 
 @AnalyzeClasses(packages = "com.procuremind.platform")
 class ArchitectureTest {
