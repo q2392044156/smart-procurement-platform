@@ -86,6 +86,8 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
 
+      # AI 助手是可选的（profile "agent"），CI 只启动平台本体、后端 AGENT_ENABLED=false，
+      # 需要真实 Agent 的助手用例会自动跳过，其余用例照常执行。
       - name: 运行 Playwright
         working-directory: frontend
         env:

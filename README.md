@@ -349,7 +349,7 @@ curl http://localhost:8000/health
 改过代码后按需跑：
 
 ```powershell
-# 前端：单元测试 + 浏览器端到端（端到端需要平台与 Agent 都在跑）
+# 前端：单元测试 + 浏览器端到端（端到端需要平台在跑；未接入 Agent 时助手用例自动跳过）
 cd frontend
 npm ci
 npm test
@@ -361,6 +361,8 @@ mvn -q test
 ```
 
 > 端到端里的「图表与表格渲染、可中断回复、历史会话删除」三条用例会真实调用 Agent，约 3 分钟。
+> 后端 `AGENT_ENABLED=false`（未接入 Agent 时的默认值，也是 CI 的配置）时这三条用例会自动跳过，
+> 改为执行「未启用 Agent 时的提示与禁用态」用例，因此平台 CI 不依赖 Agent 也能跑通。
 > 只做编译校验时用 `mvn -q -DskipTests compile`，几秒钟即可。
 
 更多部署与演示步骤见 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) 与 [`docs/DEMO.md`](docs/DEMO.md)。

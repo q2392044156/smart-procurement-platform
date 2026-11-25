@@ -1,12 +1,19 @@
 import { expect, test, type Page } from '@playwright/test'
 
+// AI 助手是可选的：只有 `docker compose --profile agent up -d` 且后端 AGENT_ENABLED=true 时，
+// /api/v1/ai/status 才返回 enabled=true。CI 只启动平台本体（backend、frontend），
+// 因此需要真实 Agent 的用例会自动跳过；本地接入 Agent 后这些用例会自动执行。
+const NEED_AGENT = '未启用可选 Agent（后端 AGENT_ENABLED=false），跳过需要真实 Agent 的用例'
+
 async function openAssistant(page: Page) {
   await page.goto('/login')
   await page.getByRole('button', { name: '登录平台' }).click()
   await expect(page).toHaveURL(/\/dashboard$/)
   await page.getByRole('menuitem', { name: 'AI采购助手' }).click()
   await expect(page.getByRole('heading', { name: 'AI采购助手', level: 1 })).toBeVisible()
-  await expect(page.getByText('Agent 已连接')).toBeVisible()
+  const badge = page.locator('.head-actions .el-tag')
+  await expect(badge).toBeVisible({ timeout: 15_000 })
+  return (await badge.innerText()).includes('已连接')
 }
 
 async function ask(page: Page, text: string) {
@@ -15,9 +22,19 @@ async function ask(page: Page, text: string) {
   await page.keyboard.press('Control+Enter')
 }
 
+test('未启用 Agent 时给出明确提示且不会误发请求', async ({ page }) => {
+  test.setTimeout(60_000)
+  test.skip(await openAssistant(page), '当前环境已启用 Agent，该用例只在未启用时执行')
+  await expect(page.locator('.head-actions .el-tag')).toHaveText('Agent 未启用')
+  await expect(page.getByPlaceholder('请先在后端启用 Agent 集成')).toBeDisabled()
+  await expect(page.getByRole('button', { name: '发送' })).toBeDisabled()
+  await page.getByRole('button', { name: '历史会话' }).click()
+  await expect(page.getByText('暂无历史')).toBeVisible()
+})
+
 test('图表与表格渲染：表格出 HTML 表格、图片内联并带下载按钮', async ({ page }) => {
   test.setTimeout(240_000)
-  await openAssistant(page)
+  test.skip(!(await openAssistant(page)), NEED_AGENT)
   await ask(page, '把前 5 个供应商按订单金额做个柱状图')
 
   const bubble = page.locator('.bubble.markdown').last()
@@ -32,7 +49,7 @@ test('图表与表格渲染：表格出 HTML 表格、图片内联并带下载�
 
 test('生成过程中可以中断 AI 回复', async ({ page }) => {
   test.setTimeout(120_000)
-  await openAssistant(page)
+  test.skip(!(await openAssistant(page)), NEED_AGENT)
   await ask(page, '把前 5 个供应商按订单金额做个柱状图，并逐个分析采购集中度风险')
 
   const stopButton = page.getByRole('button', { name: '停止生成' })
@@ -44,7 +61,7 @@ test('生成过程中可以中断 AI 回复', async ({ page }) => {
 
 test('历史会话可以删除', async ({ page }) => {
   test.setTimeout(120_000)
-  await openAssistant(page)
+  test.skip(!(await openAssistant(page)), NEED_AGENT)
   await ask(page, '你好，介绍一下你能做什么')
   await expect(page.getByRole('button', { name: '发送' })).toBeVisible({ timeout: 90_000 })
 
