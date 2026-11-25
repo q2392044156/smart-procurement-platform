@@ -35,7 +35,7 @@ smart-procurement-platform/
 │   ├── src/main/java/com/procuremind/platform/
 │   │   ├── ProcureMindApplication.java   # 启动类
 │   │   ├── controller/                   # 22 个 REST 入口：路由、校验、权限注解
-│   │   ├── service/                      # 26 个业务服务：状态机、事务编排
+│   │   ├── service/                      # 27 个业务服务：状态机、事务编排
 │   │   ├── mapper/                       # 21 个 MyBatis 接口：数据访问，SQL 在 resources/mapper
 │   │   ├── pojo/                         # 响应体与请求对象：ApiResponse、FilePresignRequest
 │   │   ├── exception/                    # BusinessException、全局异常处理
@@ -46,7 +46,7 @@ smart-procurement-platform/
 │   │   └── config/                       # Security、MinIO、Jackson、OpenAPI、演示数据
 │   ├── src/main/resources/
 │   │   ├── mapper/                       # 21 份 MyBatis XML：全部 SQL 语句
-│   │   ├── db/migration/                 # Flyway V1~V12：表结构/主数据/演示数据
+│   │   ├── db/migration/                 # Flyway V1~V13：表结构/主数据/演示数据/权限补丁
 │   │   └── processes/                    # 申请、订单的 Flowable BPMN
 │   ├── src/test/java/...                 # 单元、集成、架构约束测试
 │   └── pom.xml
@@ -102,6 +102,8 @@ smart-procurement-platform/
 ├── LICENSE
 └── README.md
 ```
+
+后端按层分包，依赖方向固定为 `controller → service → mapper`：Controller 只做路由、参数校验与权限注解，Service 负责状态机与事务编排，Mapper 接口配 `resources/mapper/*.xml` 承载全部 SQL。层间约束由 `backend/src/test/java/com/procuremind/platform/ArchitectureTest.java` 守住（Controller/Service 不得直接使用 `JdbcTemplate`，Service/Filter 不得依赖 Controller）。
 
 
 ## 项目架构
