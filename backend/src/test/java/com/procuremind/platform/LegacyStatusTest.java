@@ -1,7 +1,7 @@
 package com.procuremind.platform;
 
-import com.procuremind.platform.agentintegration.LegacyStatus;
-import com.procuremind.platform.common.BusinessException;
+import com.procuremind.platform.utils.LegacyStatus;
+import com.procuremind.platform.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;

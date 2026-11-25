@@ -1,9 +1,9 @@
 package com.procuremind.platform.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.procuremind.platform.common.ApiResponse;
-import com.procuremind.platform.system.JwtAuthenticationFilter;
-import com.procuremind.platform.system.InternalAgentAuthenticationFilter;
+import com.procuremind.platform.pojo.ApiResponse;
+import com.procuremind.platform.filter.JwtAuthenticationFilter;
+import com.procuremind.platform.filter.InternalAgentAuthenticationFilter;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;

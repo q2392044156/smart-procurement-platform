@@ -1,5 +1,7 @@
 package com.procuremind.platform.file;
 
+import com.procuremind.platform.service.FileContentValidator;
+
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;

@@ -1,6 +1,6 @@
 package com.procuremind.platform;
 
-import com.procuremind.platform.masterdata.MasterDataService;
+import com.procuremind.platform.service.MasterDataService;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;

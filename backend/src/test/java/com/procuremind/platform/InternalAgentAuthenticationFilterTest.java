@@ -1,8 +1,8 @@
 package com.procuremind.platform;
 
-import com.procuremind.platform.system.CurrentUser;
-import com.procuremind.platform.system.InternalAgentAuthenticationFilter;
-import com.procuremind.platform.system.UserDirectory;
+import com.procuremind.platform.anno.CurrentUser;
+import com.procuremind.platform.filter.InternalAgentAuthenticationFilter;
+import com.procuremind.platform.service.UserDirectory;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;

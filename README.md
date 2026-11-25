@@ -31,26 +31,18 @@
 
 ```text
 smart-procurement-platform/
-├── backend/                              # Spring Boot 模块化单体
+├── backend/                              # Spring Boot 单体应用（按层分包）
 │   ├── src/main/java/com/procuremind/platform/
-│   │   ├── requisition/                  # 采购申请、明细、提交/取消/转单
-│   │   ├── purchaseorder/                # 采购订单、明细、提交/关闭/取消
-│   │   ├── workflow/                     # Flowable 待办、审批、时间线
-│   │   ├── inventory/                    # 收货、库存余额、流水、领料出库
-│   │   ├── budget/                       # 部门年度预算与额度校验
-│   │   ├── contract/                     # 合同台账与订单关联
-│   │   ├── supplier/                     # 供应商、联系人、资质、绩效
-│   │   ├── masterdata/                   # 分类、物资、品牌、单位、仓库
-│   │   ├── knowledge/                    # 知识库文档、版本、可见性
-│   │   ├── file/                         # MinIO 文件、附件、类型校验
-│   │   ├── dashboard/                    # 经营看板
-│   │   ├── analytics/                    # 采购趋势、供应商排名等分析
-│   │   ├── alerts/                       # 资质/交付/审批提醒
-│   │   ├── system/                       # 用户、组织、角色、权限、审计、认证
-│   │   ├── agentintegration/             # Agent 内部工具面、AI 助手转发（对话/历史/文件）与 Legacy 适配
-│   │   ├── idempotency/                  # 写操作幂等
-│   │   ├── common/                       # 统一响应、异常、RequestId
-│   │   └── config/                       # Security、MinIO、Jackson、OpenAPI
+│   │   ├── ProcureMindApplication.java   # 启动类
+│   │   ├── controller/                   # 22 个 REST 入口：路由、校验、权限注解
+│   │   ├── service/                      # 26 个业务服务：状态机、事务、SQL
+│   │   ├── pojo/                         # 响应体与请求对象：ApiResponse、FilePresignRequest
+│   │   ├── exception/                    # BusinessException、全局异常处理
+│   │   ├── filter/                       # JWT、RequestId、内部 Agent 认证
+│   │   ├── aop/                          # 审计切面
+│   │   ├── anno/                         # CurrentUser 注解
+│   │   ├── utils/                        # SecurityUtils、LegacyStatus
+│   │   └── config/                       # Security、MinIO、Jackson、OpenAPI、演示数据
 │   ├── src/main/resources/
 │   │   ├── db/migration/                 # Flyway V1~V12：表结构/主数据/演示数据
 │   │   └── processes/                    # 申请、订单的 Flowable BPMN

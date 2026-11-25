@@ -1,8 +1,8 @@
 package com.procuremind.platform;
 
-import com.procuremind.platform.file.BusinessAttachmentService;
-import com.procuremind.platform.purchaseorder.PurchaseOrderService;
-import com.procuremind.platform.requisition.RequisitionService;
+import com.procuremind.platform.service.BusinessAttachmentService;
+import com.procuremind.platform.service.PurchaseOrderService;
+import com.procuremind.platform.service.RequisitionService;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import jakarta.validation.ValidatorFactory;

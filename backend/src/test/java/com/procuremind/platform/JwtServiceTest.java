@@ -1,7 +1,7 @@
 package com.procuremind.platform;
 
-import com.procuremind.platform.system.CurrentUser;
-import com.procuremind.platform.system.JwtService;
+import com.procuremind.platform.anno.CurrentUser;
+import com.procuremind.platform.service.JwtService;
 import org.junit.jupiter.api.Test;
 
 import java.util.Set;

@@ -1,38 +1,50 @@
-# ProcureMind 模块边界
+# ProcureMind 后端分层与边界
 
-项目采用模块化单体：部署仍是一个 Spring Boot 应用，但代码按业务能力组织，避免 Controller、SQL 和跨模块细节混杂。
+项目是单应用、单数据库的模块化单体：部署仍是一个 Spring Boot 进程，代码按**技术职责分层**（`controller` / `service` / `mapper` / `pojo` / `exception` / `filter` …），业务能力由 `service` 包内对应的 Service 收敛。
 
 ## 后端依赖方向
 
 ```text
-Controller（HTTP / DTO 校验）
+Controller（HTTP / 参数校验 / 权限注解）
     ↓
-领域 Service（状态机、权限、事务）
+Service（状态机、事务、跨能力编排、SQL）
     ↓
 JdbcTemplate / Flowable / Redis / MinIO（基础设施）
 ```
 
-- `system`：认证、组织、角色权限、数据范围和审计。
-- `masterdata`：分类、动态属性、物资、仓库、单位和品牌。
-- `supplier`：供应商、联系人、资质及评价。
-- `requisition`：采购申请生命周期，只通过公开服务使用工作流和附件能力。
-- `purchaseorder`：订单商业条款与生命周期。
-- `inventory`：不可变收货与出库事件、库存余额、跟踪对象和查询服务。
-- `budget`：部门年度预算与占用校验，申请提交与直采下单时生效。
-- `contract`：供应商合同台账、订单关联与到期/终止状态。
-- `knowledge`：知识库文档元数据、版本、可见范围与下载授权；原文仍存放在对象存储，由 `file` 模块统一管理。
-- `alerts`：供应商资质临期/过期、订单交付临期/逾期、审批积压的只读提醒查询。
-- `workflow`：Flowable 流程启动、处理、历史与活动流程取消。
-- `file`：对象存储、文件元数据以及可复用的业务附件关联。
-- `dashboard`：只读聚合查询。
-- `agentintegration`：可选 Agent 的防腐层，负责协议转换与身份覆盖；它是旧 MCP 接口唯一允许保留直接兼容查询的边界。
-- `idempotency`：写操作幂等基础设施，按显式 `Idempotency-Key` 或“操作 + 用户 + 请求内容”指纹去重，供 Agent 重试安全。
+分层规则由 `backend/src/test/java/com/procuremind/platform/ArchitectureTest.java` 用 ArchUnit 持续约束：
 
-普通 Controller 不允许依赖 `JdbcTemplate`，由 `ArchitectureTest` 持续约束。跨业务模块不得访问对方 Mapper/内部实现；共享能力以公开 Service 暴露。收货写入仍由单一事务覆盖收货单、订单累计量、跟踪库存、余额和流水。
+- Controller 不依赖 `JdbcTemplate`；`LegacyErpController` 是遗留 ERP 兼容面，显式豁免。
+- Service、Filter 不反向依赖 Controller。
+- `pojo` 保持独立，不依赖 `controller` / `service` / `filter` / `aop`。
 
-`file` 模块通过 `FileReferenceChecker` 扩展点收集“哪些业务还在引用这个文件”，删除对象前统一校验；文件模块不认识任何具体业务模块，知识库等模块自行注册检查器即可。
+同一层内**不再按业务分包**：控制器在 `controller` 下平铺，服务在 `service` 下平铺，业务归属由类名表达（`RequisitionService`、`PurchaseOrderService`…）。跨业务调用只走对方 Service 的公开方法，不直接访问其 SQL。
 
-`agentintegration` 的写操作不再直接拼 SQL：供应商、物资、订单分别复用 `SupplierService`、`MasterDataService`、`PurchaseOrderService` 的校验与事务，状态口径由 `LegacyStatus` 统一适配，幂等由 `IdempotencyService` 统一兜底。
+> 2026-11 之前的版本按业务能力分包（`requisition/`、`purchaseorder/`…）。那次重组把 18 个业务包展平成与团队约定一致的分层目录，代价是**原本由包边界强制的模块隔离，降级为 ArchUnit 的层间规则加代码评审**。这一点在新增跨模块调用时要靠人守。
+
+## 业务能力清单（实现均在 `service` 包）
+
+- 认证与组织：`AuthService`、`JwtService`、`UserDirectory`、`SystemManagementService`、`DataScopeService`、`AuditService`（认证、组织、角色权限、数据范围和审计）。
+- 主数据：`MasterDataService`（分类、动态属性、物资、仓库、单位和品牌）。
+- 供应商：`SupplierService`（供应商、联系人、资质及评价）。
+- 采购申请：`RequisitionService`（申请生命周期，只通过公开服务使用工作流和附件能力）。
+- 采购订单：`PurchaseOrderService`（订单商业条款与生命周期）。
+- 库存：`ReceiptService`、`IssueService`、`InventoryQueryService`（不可变收货与出库事件、库存余额、跟踪对象和查询服务）。
+- 预算：`BudgetService`（部门年度预算与占用校验，申请提交与直采下单时生效）。
+- 合同：`ContractService`（供应商合同台账、订单关联与到期/终止状态）。
+- 知识库：`KnowledgeService`（文档元数据、版本、可见范围与下载授权；原文仍存放在对象存储，由文件能力统一管理）。
+- 提醒：`AlertService`（供应商资质临期/过期、订单交付临期/逾期、审批积压的只读提醒查询）。
+- 工作流：`WorkflowService`（Flowable 流程启动、处理、历史与活动流程取消）。
+- 文件：`FileStorageService`、`BusinessAttachmentService`、`FileContentValidator`（对象存储、文件元数据以及可复用的业务附件关联）。
+- 看板与分析：`DashboardService`、`AnalyticsService`（只读聚合查询）。
+- Agent 防腐层：`controller` 下的 `*AgentController` 与 `LegacyErpController`，负责协议转换与身份覆盖；它是旧 MCP 接口唯一允许保留直接兼容查询的边界。
+- 幂等：`IdempotencyService`（按显式 `Idempotency-Key` 或“操作 + 用户 + 请求内容”指纹去重，供 Agent 重试安全）。
+
+收货写入仍由单一事务覆盖收货单、订单累计量、跟踪库存、余额和流水。
+
+文件删除通过 `FileReferenceChecker` 扩展点收集“哪些业务还在引用这个文件”，删除对象前统一校验；文件能力不认识任何具体业务，知识库等模块自行注册检查器即可。
+
+`LegacyErpController` 的写操作不再直接拼 SQL：供应商、物资、订单分别复用 `SupplierService`、`MasterDataService`、`PurchaseOrderService` 的校验与事务，状态口径由 `LegacyStatus` 统一适配，幂等由 `IdempotencyService` 统一兜底。
 
 ## 前端结构
 
