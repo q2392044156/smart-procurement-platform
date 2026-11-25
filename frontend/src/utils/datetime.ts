@@ -18,3 +18,14 @@ export function formatDate(value: unknown): string {
   if (Number.isNaN(date.getTime())) return text
   return date.toLocaleDateString('zh-CN')
 }
+
+/**
+ * 数量字段（BigDecimal 序列化成 1222.0000）去掉无意义的尾随零，
+ * 1222.0000 → 1,222，1.5000 → 1.5。
+ */
+export function formatQty(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—'
+  const num = Number(value)
+  if (Number.isNaN(num)) return String(value)
+  return num.toLocaleString('zh-CN', { maximumFractionDigits: 4 })
+}

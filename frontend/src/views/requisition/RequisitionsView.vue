@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import WorkflowTimeline from '@/components/WorkflowTimeline.vue'
 import BusinessAttachments from '@/components/BusinessAttachments.vue'
 import type { Dict } from '@/types'
+import { formatQty } from '@/utils/datetime'
 
 const auth = useAuthStore()
 const rows = ref<Dict[]>([])
@@ -207,7 +208,7 @@ onMounted(load)
         <el-table :data="detail.items" border>
           <el-table-column prop="materialCode" label="物资编码" />
           <el-table-column prop="materialName" label="物资名称" />
-          <el-table-column prop="quantity" label="数量" width="90" />
+          <el-table-column label="数量" width="90"><template #default="s">{{ formatQty(s.row.quantity) }}</template></el-table-column>
           <el-table-column prop="estimatedUnitPrice" label="预估单价" width="120" />
           <el-table-column prop="remark" label="备注" />
         </el-table>
@@ -227,7 +228,7 @@ onMounted(load)
         <el-form-item label="商业条款"><el-input v-model="convert.terms" type="textarea" /></el-form-item>
         <el-table :data="convertItems" border>
           <el-table-column prop="materialName" label="物资" />
-          <el-table-column prop="quantity" label="数量" width="100" />
+          <el-table-column label="数量" width="100"><template #default="s">{{ formatQty(s.row.quantity) }}</template></el-table-column>
           <el-table-column label="订单单价" width="180"><template #default="s"><el-input-number v-model="convert.priceOverrides[s.row.materialId]" :min="0" :precision="2" /></template></el-table-column>
         </el-table>
       </el-form>

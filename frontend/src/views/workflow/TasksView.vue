@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '@/api/http'
 import type { Dict } from '@/types'
+import { formatQty } from '@/utils/datetime'
 
 const todo = ref<Dict[]>([])
 const done = ref<Dict[]>([])
@@ -84,7 +85,7 @@ onMounted(load)
         <el-table :data="previewData.items" border>
           <el-table-column prop="materialCode" label="物资编码" />
           <el-table-column prop="materialName" label="物资名称" />
-          <el-table-column prop="quantity" label="数量" width="90" />
+          <el-table-column label="数量" width="90"><template #default="s">{{ formatQty(s.row.quantity) }}</template></el-table-column>
           <el-table-column :prop="previewData.requisitionNo ? 'estimatedUnitPrice' : 'unitPrice'" label="单价" width="120" />
           <el-table-column prop="remark" label="备注" />
         </el-table>

@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import http from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
-import { formatTime } from '@/utils/datetime'
+import { formatQty, formatTime } from '@/utils/datetime'
 import type { Dict } from '@/types'
 
 const auth = useAuthStore()
@@ -86,11 +86,11 @@ onMounted(load)
       </div>
       <el-tabs v-model="tab">
         <el-tab-pane label="库存余额" name="balance">
-          <el-table :data="balances"><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="materialCode" label="物资编码"/><el-table-column prop="materialName" label="物资名称"/><el-table-column prop="trackingMode" label="跟踪方式"/><el-table-column prop="quantity" label="当前库存"/><el-table-column prop="minStock" label="安全库存"/><el-table-column label="状态"><template #default="s"><el-tag :type="s.row.lowStock?'danger':'success'">{{s.row.lowStock?'库存偏低':'正常'}}</el-tag></template></el-table-column></el-table>
+          <el-table :data="balances"><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="materialCode" label="物资编码"/><el-table-column prop="materialName" label="物资名称"/><el-table-column prop="trackingMode" label="跟踪方式"/><el-table-column label="当前库存"><template #default="s">{{ formatQty(s.row.quantity) }}</template></el-table-column><el-table-column label="安全库存"><template #default="s">{{ formatQty(s.row.minStock) }}</template></el-table-column><el-table-column label="状态"><template #default="s"><el-tag :type="s.row.lowStock?'danger':'success'">{{s.row.lowStock?'库存偏低':'正常'}}</el-tag></template></el-table-column></el-table>
           <el-pagination style="margin-top:12px" layout="total, sizes, prev, pager, next" :total="pages.balance.total" v-model:current-page="pages.balance.current" v-model:page-size="pages.balance.size" :page-sizes="[10,20,50]" @current-change="loadBalances" @size-change="search" />
         </el-tab-pane>
         <el-tab-pane label="库存流水" name="ledger">
-          <el-table :data="ledger"><el-table-column label="时间" width="180"><template #default="s">{{ formatTime(s.row.createdAt) }}</template></el-table-column><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="materialName" label="物资"/><el-table-column prop="businessType" label="业务类型"/><el-table-column prop="direction" label="方向"/><el-table-column prop="quantity" label="变动数量"/><el-table-column prop="balanceAfter" label="结存"/><el-table-column prop="batchNo" label="批次"/></el-table>
+          <el-table :data="ledger"><el-table-column label="时间" width="180"><template #default="s">{{ formatTime(s.row.createdAt) }}</template></el-table-column><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="materialName" label="物资"/><el-table-column prop="businessType" label="业务类型"/><el-table-column prop="direction" label="方向"/><el-table-column label="变动数量"><template #default="s">{{ formatQty(s.row.quantity) }}</template></el-table-column><el-table-column label="结存"><template #default="s">{{ formatQty(s.row.balanceAfter) }}</template></el-table-column><el-table-column prop="batchNo" label="批次"/></el-table>
           <el-pagination style="margin-top:12px" layout="total, sizes, prev, pager, next" :total="pages.ledger.total" v-model:current-page="pages.ledger.current" v-model:page-size="pages.ledger.size" :page-sizes="[20,50,100]" @current-change="loadLedger" @size-change="search" />
         </el-tab-pane>
         <el-tab-pane label="收货记录" name="receipt">
@@ -98,7 +98,7 @@ onMounted(load)
           <el-pagination style="margin-top:12px" layout="total, sizes, prev, pager, next" :total="pages.receipt.total" v-model:current-page="pages.receipt.current" v-model:page-size="pages.receipt.size" :page-sizes="[10,20,50]" @current-change="loadReceipts" @size-change="search" />
         </el-tab-pane>
         <el-tab-pane label="出库记录" name="issue">
-          <el-table :data="issues"><el-table-column prop="issueNo" label="出库单号" width="180"/><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="materialName" label="物资"/><el-table-column prop="quantity" label="数量" width="90"/><el-table-column prop="batchNo" label="批次"/><el-table-column prop="purpose" label="用途"/><el-table-column prop="department" label="领用部门"/><el-table-column prop="requester" label="领用人"/><el-table-column label="出库时间" width="170"><template #default="s">{{ formatTime(s.row.issuedAt) }}</template></el-table-column></el-table>
+          <el-table :data="issues"><el-table-column prop="issueNo" label="出库单号" width="180"/><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="materialName" label="物资"/><el-table-column label="数量" width="90"><template #default="s">{{ formatQty(s.row.quantity) }}</template></el-table-column><el-table-column prop="batchNo" label="批次"/><el-table-column prop="purpose" label="用途"/><el-table-column prop="department" label="领用部门"/><el-table-column prop="requester" label="领用人"/><el-table-column label="出库时间" width="170"><template #default="s">{{ formatTime(s.row.issuedAt) }}</template></el-table-column></el-table>
           <el-pagination style="margin-top:12px" layout="total, sizes, prev, pager, next" :total="pages.issue.total" v-model:current-page="pages.issue.current" v-model:page-size="pages.issue.size" :page-sizes="[10,20,50]" @current-change="loadIssues" @size-change="search" />
         </el-tab-pane>
       </el-tabs>
@@ -111,7 +111,7 @@ onMounted(load)
           <el-descriptions-item label="收货时间">{{detail.receiptDate}}</el-descriptions-item><el-descriptions-item label="备注">{{detail.remark||'—'}}</el-descriptions-item>
         </el-descriptions>
         <h3 class="section-title">收货明细</h3>
-        <el-table :data="detail.items" border><el-table-column prop="materialCode" label="物资编码"/><el-table-column prop="materialName" label="物资名称"/><el-table-column prop="trackingMode" label="跟踪" width="90"/><el-table-column prop="quantity" label="数量" width="90"/><el-table-column prop="batchNo" label="批次号"/><el-table-column label="序列号" min-width="180"><template #default="s">{{serialText(s.row.serialNumbers)}}</template></el-table-column></el-table>
+        <el-table :data="detail.items" border><el-table-column prop="materialCode" label="物资编码"/><el-table-column prop="materialName" label="物资名称"/><el-table-column prop="trackingMode" label="跟踪" width="90"/><el-table-column label="数量" width="90"><template #default="s">{{ formatQty(s.row.quantity) }}</template></el-table-column><el-table-column prop="batchNo" label="批次号"/><el-table-column label="序列号" min-width="180"><template #default="s">{{serialText(s.row.serialNumbers)}}</template></el-table-column></el-table>
       </template>
     </el-drawer>
 

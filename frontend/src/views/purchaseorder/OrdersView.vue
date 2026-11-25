@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 import WorkflowTimeline from '@/components/WorkflowTimeline.vue'
 import BusinessAttachments from '@/components/BusinessAttachments.vue'
 import type { Dict } from '@/types'
+import { formatQty } from '@/utils/datetime'
 
 const auth = useAuthStore()
 const rows = ref<Dict[]>([])
@@ -193,9 +194,9 @@ onMounted(load)
           <el-table-column prop="materialCode" label="物资编码" />
           <el-table-column prop="materialName" label="物资" />
           <el-table-column prop="trackingMode" label="跟踪" width="90" />
-          <el-table-column prop="quantity" label="订购" width="80" />
-          <el-table-column prop="receivedQuantity" label="已收" width="80" />
-          <el-table-column prop="unitPrice" label="单价" width="110" />
+          <el-table-column label="订购" width="80"><template #default="s">{{ formatQty(s.row.quantity) }}</template></el-table-column>
+          <el-table-column label="已收" width="80"><template #default="s">{{ formatQty(s.row.receivedQuantity) }}</template></el-table-column>
+          <el-table-column label="单价" width="110"><template #default="s">{{ formatQty(s.row.unitPrice) }}</template></el-table-column>
         </el-table>
         <BusinessAttachments business-type="PURCHASE_ORDER" :business-id="detail.id" :editable="['DRAFT','REJECTED'].includes(detail.status) && canManage(detail)" />
         <WorkflowTimeline business-type="PURCHASE_ORDER" :business-id="detail.id" />
@@ -214,7 +215,7 @@ onMounted(load)
         <el-table :data="editForm.items" border>
           <el-table-column prop="materialCode" label="物资编码" width="150" />
           <el-table-column prop="materialName" label="物资名称" />
-          <el-table-column prop="quantity" label="数量" width="90" />
+          <el-table-column label="数量" width="90"><template #default="s">{{ formatQty(s.row.quantity) }}</template></el-table-column>
           <el-table-column label="单价" width="170"><template #default="s"><el-input-number v-model="s.row.unitPrice" :min="0" :precision="2" /></template></el-table-column>
           <el-table-column label="备注"><template #default="s"><el-input v-model="s.row.remark" /></template></el-table-column>
         </el-table>
