@@ -7,6 +7,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import com.procuremind.platform.pojo.row.BalanceLock;
 
 @Mapper
 public interface IssueMapper {
@@ -30,7 +31,7 @@ public interface IssueMapper {
     int decrementBatch(@Param("warehouseId") Long warehouseId, @Param("materialId") Long materialId,
                        @Param("batchNo") String batchNo, @Param("quantity") BigDecimal quantity);
 
-    Map<String, Object> lockBalance(@Param("warehouseId") Long warehouseId, @Param("materialId") Long materialId);
+    BalanceLock lockBalance(@Param("warehouseId") Long warehouseId, @Param("materialId") Long materialId);
 
     int updateBalance(@Param("id") Long id, @Param("quantity") BigDecimal quantity,
                       @Param("userId") Long userId, @Param("version") Object version);

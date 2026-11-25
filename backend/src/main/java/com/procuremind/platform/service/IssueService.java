@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import com.procuremind.platform.pojo.request.IssueRequest;
+import com.procuremind.platform.pojo.row.BalanceLock;
 
 /**
  * 出库/领用：扣减库存余额、批次与序列号，并向不可变流水写入 OUT 方向记录。
@@ -112,14 +113,14 @@ public class IssueService {
     }
 
     private BigDecimal decrementBalance(Long warehouseId, Long materialId, BigDecimal quantity, Long user) {
-        Map<String, Object> row = mapper.lockBalance(warehouseId, materialId);
+        BalanceLock row = mapper.lockBalance(warehouseId, materialId);
         if (row == null) throw new BusinessException(HttpStatus.CONFLICT, "该仓库没有此物资的库存记录");
-        BigDecimal current = (BigDecimal) row.get("quantity");
+        BigDecimal current = row.quantity();
         if (current.compareTo(quantity) < 0) {
             throw new BusinessException(HttpStatus.CONFLICT, "库存不足，当前可用 " + current.stripTrailingZeros().toPlainString());
         }
         BigDecimal next = current.subtract(quantity);
-        mapper.updateBalance(((Number) row.get("id")).longValue(), next, user, row.get("version"));
+        mapper.updateBalance(row.id(), next, user, row.version());
         return next;
     }
 

@@ -31,7 +31,7 @@
         where warehouse_id=#{warehouseId} and material_id=#{materialId} and batch_no=#{batchNo} and quantity&gt;=#{quantity}
     </update>
 
-    <select id="lockBalance" resultType="map">
+    <select id="lockBalance" resultType="com.procuremind.platform.pojo.row.BalanceLock">
         select id,quantity,version from inv_balance
         where warehouse_id=#{warehouseId} and material_id=#{materialId} and deleted=0 for update
     </select>

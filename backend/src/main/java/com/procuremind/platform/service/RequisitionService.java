@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Set;
 import com.procuremind.platform.pojo.request.ReasonRequest;
 import com.procuremind.platform.pojo.request.RequisitionItem;
+import com.procuremind.platform.pojo.row.RequisitionLock;
 import com.procuremind.platform.pojo.request.RequisitionRequest;
 
 @Service
@@ -95,9 +96,9 @@ public class RequisitionService {
 
     @Transactional
     public void update(Long id, RequisitionRequest r) {
-        Map<String, Object> row = lock(id);
+        RequisitionLock row = lock(id);
         requireOwner(row, false);
-        if (!EDITABLE_STATUSES.contains(row.get("status").toString())) {
+        if (!EDITABLE_STATUSES.contains(row.status())) {
             throw new BusinessException(HttpStatus.CONFLICT, "当前状态不能编辑");
         }
         validate(r);
@@ -109,13 +110,13 @@ public class RequisitionService {
 
     @Transactional
     public void submit(Long id) {
-        Map<String, Object> row = lock(id);
+        RequisitionLock row = lock(id);
         requireOwner(row, false);
-        if (!EDITABLE_STATUSES.contains(row.get("status").toString())) {
+        if (!EDITABLE_STATUSES.contains(row.status())) {
             throw new BusinessException(HttpStatus.CONFLICT, "当前状态不能提交");
         }
-        budget.check(((Number) row.get("department_id")).longValue(), (BigDecimal) row.get("budget_amount"));
-        String processId = workflow.startRequisition(id, (BigDecimal) row.get("budget_amount"),
+        budget.check(row.departmentId(), row.budgetAmount());
+        String processId = workflow.startRequisition(id, row.budgetAmount(),
                 SecurityUtils.currentUser());
         String nextStatus = workflow.isFinished(processId) ? "APPROVED" : "PENDING_APPROVAL";
         mapper.updateStatus(id, nextStatus, processId, SecurityUtils.currentUser().id());
@@ -123,9 +124,9 @@ public class RequisitionService {
 
     @Transactional
     public void cancel(Long id, ReasonRequest r) {
-        Map<String, Object> row = lock(id);
+        RequisitionLock row = lock(id);
         requireOwner(row, true);
-        String status = row.get("status").toString();
+        String status = row.status();
         if (!CANCELLABLE_STATUSES.contains(status)) {
             throw new BusinessException(HttpStatus.CONFLICT, "当前状态不能取消");
         }
@@ -137,9 +138,9 @@ public class RequisitionService {
 
     @Transactional
     public void delete(Long id) {
-        Map<String, Object> row = lock(id);
+        RequisitionLock row = lock(id);
         requireOwner(row, true);
-        if (!DELETABLE_STATUSES.contains(row.get("status").toString())) {
+        if (!DELETABLE_STATUSES.contains(row.status())) {
             throw new BusinessException(HttpStatus.CONFLICT, "只有草稿或已取消申请可以删除");
         }
         Long user = SecurityUtils.currentUser().id();
@@ -148,15 +149,15 @@ public class RequisitionService {
         attachments.unlinkBusiness("REQUISITION", id);
     }
 
-    private Map<String, Object> lock(Long id) {
-        Map<String, Object> row = mapper.lockById(id);
+    private RequisitionLock lock(Long id) {
+        RequisitionLock row = mapper.lockById(id);
         if (row == null) throw new BusinessException(HttpStatus.NOT_FOUND, "采购申请不存在");
         return row;
     }
 
-    private void requireOwner(Map<String, Object> row, boolean adminAllowed) {
+    private void requireOwner(RequisitionLock row, boolean adminAllowed) {
         CurrentUser user = SecurityUtils.currentUser();
-        if (!row.get("applicant_id").toString().equals(user.id().toString())
+        if (!row.applicantId().equals(user.id())
                 && !(adminAllowed && user.roles().contains("ADMIN"))) {
             throw new BusinessException(HttpStatus.FORBIDDEN, "只能操作自己的申请");
         }

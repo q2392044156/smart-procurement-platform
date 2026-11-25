@@ -17,7 +17,7 @@
         where idempotency_key=#{key} and user_id=#{userId} and operation=#{operation}
     </update>
 
-    <select id="lockOrder" resultType="map">
+    <select id="lockOrder" resultType="com.procuremind.platform.pojo.row.PurchaseOrderStatus">
         select status from po_purchase_order where id=#{id} and deleted=0 for update
     </select>
 
@@ -34,7 +34,7 @@
         select id from inv_receipt where receipt_no=#{receiptNo}
     </select>
 
-    <select id="lockOrderItem" resultType="map">
+    <select id="lockOrderItem" resultType="com.procuremind.platform.pojo.row.ReceiptItemLock">
         select i.material_id,i.quantity,i.received_quantity,m.tracking_mode
         from po_purchase_order_item i join md_material m on m.id=i.material_id
         where i.id=#{id} and i.purchase_order_id=#{purchaseOrderId} for update

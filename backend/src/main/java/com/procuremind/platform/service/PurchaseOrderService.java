@@ -27,6 +27,8 @@ import com.procuremind.platform.pojo.request.PurchaseOrderRequest;
 import com.procuremind.platform.pojo.request.PurchaseOrderUpdateItem;
 import com.procuremind.platform.pojo.request.PurchaseOrderUpdateRequest;
 import com.procuremind.platform.pojo.request.ReasonRequest;
+import com.procuremind.platform.pojo.row.PurchaseOrderLock;
+import com.procuremind.platform.pojo.row.RequisitionStatus;
 
 @Service
 public class PurchaseOrderService {
@@ -85,9 +87,9 @@ public class PurchaseOrderService {
     @Transactional
     public Long convert(Long requisitionId, PurchaseOrderRequest r) {
         dataScope.requireRequisition(requisitionId);
-        Map<String, Object> req = mapper.lockRequisition(requisitionId);
+        RequisitionStatus req = mapper.lockRequisition(requisitionId);
         if (req == null) throw new BusinessException(HttpStatus.NOT_FOUND, "采购申请不存在");
-        if (!"APPROVED".equals(req.get("status"))) throw new BusinessException(HttpStatus.CONFLICT, "只有已审批申请可以转换为订单");
+        if (!"APPROVED".equals(req.status())) throw new BusinessException(HttpStatus.CONFLICT, "只有已审批申请可以转换为订单");
         requireQualifiedSupplier(r.supplierId());
         var items = mapper.findRequisitionItems(requisitionId);
         if (items.isEmpty()) throw new BusinessException(HttpStatus.CONFLICT, "申请单没有可转换的明细");
@@ -125,9 +127,9 @@ public class PurchaseOrderService {
 
     @Transactional
     public void update(Long id, PurchaseOrderUpdateRequest r) {
-        Map<String, Object> order = orderForUpdate(id);
+        PurchaseOrderLock order = orderForUpdate(id);
         requireOwner(order, true);
-        if (!EDITABLE_STATUSES.contains(order.get("status").toString())) {
+        if (!EDITABLE_STATUSES.contains(order.status())) {
             throw new BusinessException(HttpStatus.CONFLICT, "当前状态不能编辑");
         }
         if (r.deliveryDate().isBefore(LocalDate.now())) throw new BusinessException(HttpStatus.BAD_REQUEST, "交付日期不能早于今天");
@@ -153,24 +155,24 @@ public class PurchaseOrderService {
 
     @Transactional
     public void submit(Long id) {
-        Map<String, Object> row = mapper.lockById(id);
+        PurchaseOrderLock row = mapper.lockById(id);
         if (row == null) throw new BusinessException(HttpStatus.NOT_FOUND, "采购订单不存在");
-        if (!row.get("purchaser_id").toString().equals(SecurityUtils.currentUser().id().toString())) {
+        if (!row.purchaserId().equals(SecurityUtils.currentUser().id())) {
             throw new BusinessException(HttpStatus.FORBIDDEN, "只能提交自己创建的订单");
         }
-        if (!EDITABLE_STATUSES.contains(row.get("status").toString())) {
+        if (!EDITABLE_STATUSES.contains(row.status())) {
             throw new BusinessException(HttpStatus.CONFLICT, "当前状态不能提交审批");
         }
-        String process = workflow.startPurchaseOrder(id, (BigDecimal) row.get("total_amount"), SecurityUtils.currentUser());
+        String process = workflow.startPurchaseOrder(id, row.totalAmount(), SecurityUtils.currentUser());
         String nextStatus = workflow.isFinished(process) ? "APPROVED" : "PENDING_APPROVAL";
         mapper.updateStatus(id, nextStatus, process, SecurityUtils.currentUser().id());
     }
 
     @Transactional
     public void cancel(Long id, ReasonRequest r) {
-        Map<String, Object> order = orderForUpdate(id);
+        PurchaseOrderLock order = orderForUpdate(id);
         requireOwner(order, true);
-        String status = order.get("status").toString();
+        String status = order.status();
         if (!CANCELLABLE_STATUSES.contains(status)) throw new BusinessException(HttpStatus.CONFLICT, "当前状态不能取消");
         if ("APPROVED".equals(status) && receiptCount(id) > 0) {
             throw new BusinessException(HttpStatus.CONFLICT, "已有收货记录的订单不能取消");
@@ -178,22 +180,22 @@ public class PurchaseOrderService {
         if ("PENDING_APPROVAL".equals(status)) workflow.cancelActiveProcesses("PURCHASE_ORDER:" + id, r.reason());
         Long user = SecurityUtils.currentUser().id();
         mapper.cancel(id, r.reason().trim(), user);
-        restoreSource(order.get("requisition_id"), user);
+        restoreSource(order.requisitionId(), user);
     }
 
     @Transactional
     public void close(Long id) {
-        Map<String, Object> order = orderForUpdate(id);
+        PurchaseOrderLock order = orderForUpdate(id);
         requireOwner(order, true);
-        if (!"RECEIVED".equals(order.get("status"))) throw new BusinessException(HttpStatus.CONFLICT, "只有已全部收货订单可以关闭");
+        if (!"RECEIVED".equals(order.status())) throw new BusinessException(HttpStatus.CONFLICT, "只有已全部收货订单可以关闭");
         mapper.closeOrder(id, SecurityUtils.currentUser().id());
     }
 
     @Transactional
     public void delete(Long id) {
-        Map<String, Object> order = orderForUpdate(id);
+        PurchaseOrderLock order = orderForUpdate(id);
         requireOwner(order, true);
-        if (!DELETABLE_STATUSES.contains(order.get("status").toString())) {
+        if (!DELETABLE_STATUSES.contains(order.status())) {
             throw new BusinessException(HttpStatus.CONFLICT, "只有草稿、驳回或已取消订单可以删除");
         }
         if (receiptCount(id) > 0) throw new BusinessException(HttpStatus.CONFLICT, "已有收货记录的订单不能删除");
@@ -201,18 +203,18 @@ public class PurchaseOrderService {
         mapper.softDeleteItems(id, user);
         mapper.softDelete(id, user);
         attachments.unlinkBusiness("PURCHASE_ORDER", id);
-        restoreSource(order.get("requisition_id"), user);
+        restoreSource(order.requisitionId(), user);
     }
 
-    private Map<String, Object> orderForUpdate(Long id) {
-        Map<String, Object> row = mapper.lockById(id);
+    private PurchaseOrderLock orderForUpdate(Long id) {
+        PurchaseOrderLock row = mapper.lockById(id);
         if (row == null) throw new BusinessException(HttpStatus.NOT_FOUND, "采购订单不存在");
         return row;
     }
 
-    private void requireOwner(Map<String, Object> order, boolean adminAllowed) {
+    private void requireOwner(PurchaseOrderLock order, boolean adminAllowed) {
         var user = SecurityUtils.currentUser();
-        if (!order.get("purchaser_id").toString().equals(user.id().toString())
+        if (!order.purchaserId().equals(user.id())
                 && !(adminAllowed && user.roles().contains("ADMIN"))) {
             throw new BusinessException(HttpStatus.FORBIDDEN, "只能操作自己创建的订单");
         }
@@ -254,13 +256,13 @@ public class PurchaseOrderService {
 
     @Transactional
     public void updateDirect(Long id, PurchaseOrderDirectRequest request) {
-        Map<String, Object> order = orderForUpdate(id);
+        PurchaseOrderLock order = orderForUpdate(id);
         requireOwner(order, true);
-        if (!EDITABLE_STATUSES.contains(order.get("status").toString())) {
+        if (!EDITABLE_STATUSES.contains(order.status())) {
             throw new BusinessException(HttpStatus.CONFLICT, "当前状态不能编辑");
         }
         Long user = SecurityUtils.currentUser().id();
-        Long supplierId = request.supplierId() == null ? ((Number) order.get("supplier_id")).longValue() : request.supplierId();
+        Long supplierId = request.supplierId() == null ? order.supplierId() : request.supplierId();
         requireQualifiedSupplier(supplierId);
         List<PurchaseOrderDirectItem> items = requireDirectItems(request.items());
         LocalDate delivery = request.deliveryDate() == null ? LocalDate.now().plusDays(7) : request.deliveryDate();

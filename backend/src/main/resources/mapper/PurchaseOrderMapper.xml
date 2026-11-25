@@ -78,7 +78,7 @@
         where i.purchase_order_id=#{id} and i.deleted=0
     </select>
 
-    <select id="lockRequisition" resultType="map">
+    <select id="lockRequisition" resultType="com.procuremind.platform.pojo.row.RequisitionStatus">
         select status from pr_requisition where id=#{id} and deleted=0 for update
     </select>
 
@@ -118,7 +118,7 @@
         update pr_requisition set status='CONVERTED', updated_by=#{userId} where id=#{requisitionId}
     </update>
 
-    <select id="lockById" resultType="map">
+    <select id="lockById" resultType="com.procuremind.platform.pojo.row.PurchaseOrderLock">
         select order_no, purchaser_id, requisition_id, supplier_id, status, total_amount
         from po_purchase_order
         where id=#{id} and deleted=0 for update

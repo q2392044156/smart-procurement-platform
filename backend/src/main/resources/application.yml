@@ -41,6 +41,9 @@ mybatis:
   type-aliases-package: com.procuremind.platform.pojo
   configuration:
     map-underscore-to-camel-case: true
+    # 决策读（lock*）用 record 接结果：按构造器参数名匹配列名，依赖编译期 -parameters
+    # （spring-boot-starter-parent 已默认开启）。关掉它会让 lock* 返回全是 null。
+    arg-name-based-constructor-auto-mapping: true
 
 flowable:
   database-schema-update: true

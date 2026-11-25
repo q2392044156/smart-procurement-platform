@@ -83,7 +83,7 @@
         where i.requisition_id=#{id} and i.deleted=0
     </select>
 
-    <select id="lockById" resultType="map">
+    <select id="lockById" resultType="com.procuremind.platform.pojo.row.RequisitionLock">
         select applicant_id, department_id, budget_amount, status
         from pr_requisition
         where id=#{id} and deleted=0 for update

@@ -6,6 +6,8 @@ import org.apache.ibatis.annotations.Param;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Map;
+import com.procuremind.platform.pojo.row.PurchaseOrderStatus;
+import com.procuremind.platform.pojo.row.ReceiptItemLock;
 
 @Mapper
 public interface ReceiptMapper {
@@ -19,7 +21,7 @@ public interface ReceiptMapper {
     int completeIdempotency(@Param("key") String key, @Param("userId") Long userId,
                             @Param("operation") String operation, @Param("responseJson") String responseJson);
 
-    Map<String, Object> lockOrder(@Param("id") Long id);
+    PurchaseOrderStatus lockOrder(@Param("id") Long id);
 
     int countEnabledWarehouse(@Param("id") Long id);
 
@@ -29,7 +31,7 @@ public interface ReceiptMapper {
 
     Long findIdByNo(@Param("receiptNo") String receiptNo);
 
-    Map<String, Object> lockOrderItem(@Param("id") Long id, @Param("purchaseOrderId") Long purchaseOrderId);
+    ReceiptItemLock lockOrderItem(@Param("id") Long id, @Param("purchaseOrderId") Long purchaseOrderId);
 
     int insertReceiptItem(@Param("receiptId") Long receiptId, @Param("orderItemId") Long orderItemId,
                           @Param("materialId") Long materialId, @Param("quantity") BigDecimal quantity,

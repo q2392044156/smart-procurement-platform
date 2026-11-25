@@ -7,6 +7,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import com.procuremind.platform.pojo.row.PurchaseOrderLock;
+import com.procuremind.platform.pojo.row.RequisitionStatus;
 
 @Mapper
 public interface PurchaseOrderMapper {
@@ -22,7 +24,7 @@ public interface PurchaseOrderMapper {
 
     List<Map<String, Object>> findItems(@Param("id") Long id);
 
-    Map<String, Object> lockRequisition(@Param("id") Long id);
+    RequisitionStatus lockRequisition(@Param("id") Long id);
 
     List<Map<String, Object>> findRequisitionItems(@Param("requisitionId") Long requisitionId);
 
@@ -52,7 +54,7 @@ public interface PurchaseOrderMapper {
 
     void markRequisitionConverted(@Param("requisitionId") Long requisitionId, @Param("userId") Long userId);
 
-    Map<String, Object> lockById(@Param("id") Long id);
+    PurchaseOrderLock lockById(@Param("id") Long id);
 
     List<Map<String, Object>> findItemQuantities(@Param("orderId") Long orderId);
 

@@ -24,10 +24,12 @@ JdbcTemplate / Flowable / Redis / MinIO（基础设施）
 ## 数据访问约定
 
 - 每个业务能力一个 `XxxMapper` 接口（`@Mapper`，参数用 `@Param` 命名），对应一份 `backend/src/main/resources/mapper/XxxMapper.xml`；`application.yml` 里 `mybatis.mapper-locations=classpath*:mapper/**/*.xml`。
-- 查询结果一律 `resultType="map"`，列别名就是返回 JSON 的字段名。**MyBatis 不会把 Map 的 key 转驼峰**，所以别名必须与旧 SQL 逐字一致（`display_name displayName` 这类显式别名照写）。
+- 查询结果默认 `resultType="map"`，列别名就是返回 JSON 的字段名。**MyBatis 不会把 Map 的 key 转驼峰**，所以别名必须与旧 SQL 逐字一致（`display_name displayName` 这类显式别名照写）。
+- 例外是**决策读**：`lock*` / `findForUpdate` / 少数 `count*` 这类「查出来马上要拿字段做判断」的查询，`resultType` 指向 `com.procuremind.platform.pojo.row` 下的 record（如 `PurchaseOrderLock`），SQL 列名靠 `map-underscore-to-camel-case` 对上 record 组件名。这样漏列会在构造时暴露，而不是在 `row.get("total_amount")` 处变成 NPE。前提是 `mybatis.configuration.arg-name-based-constructor-auto-mapping: true` 与编译期 `-parameters`（spring-boot-starter-parent 默认开启）。列表/分页投影继续用 Map，因为它们的职责是把行透传成 JSON。
 - 用户输入只走 `<if>` + `#{}`；可变的数据范围片断用 `${scope}`，其值由 `DataScopeService` 的 `SqlFilter.literal()` 生成——实参全是服务端生成的 `Long` 或枚举名，不含请求内容。
 - 可空参数显式写 `jdbcType`（`VARCHAR` / `BIGINT` / `DATE`），避免 null 绑定在部分驱动上报错。
 - `MapperXmlTest` 解析全部 XML 并断言「每个接口方法都有对应 statement」，`MyBatisWiringTest` 用 `ApplicationContextRunner` 断言 mapper bean 能注册；两者都不连数据库。
+- `LockMappingTest`（Testcontainers）逐条断言六个加锁查询的 record 字段非空——漏一列就红，正是当初 `lockById` 漏 `total_amount` 导致订单提交 500 的回归闸门。
 - 已知缺口：`PlatformIntegrationTest`（Testcontainers）是唯一会真正执行这些 SQL 的测试，需要 Docker 才能跑。
 - `ApiContractTest` 把 20 个高频端点的响应形状沉成 `backend/src/test/resources/contract/api-shapes.json`：字段名、嵌套、标量类型变了就红，值变了不会。有意改契约时用 `-Dcontract.update=true` 重新生成，并把 json diff 一起提交。
 

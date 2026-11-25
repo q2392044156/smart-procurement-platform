@@ -7,6 +7,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import com.procuremind.platform.pojo.row.RequisitionLock;
 
 /** 采购申请的读写映射。SQL 全部在 resources/mapper/RequisitionMapper.xml。 */
 @Mapper
@@ -24,7 +25,7 @@ public interface RequisitionMapper {
     List<Map<String, Object>> findItems(@Param("id") Long id);
 
     /** 行锁读取，供提交/取消/删除前判定状态。 */
-    Map<String, Object> lockById(@Param("id") Long id);
+    RequisitionLock lockById(@Param("id") Long id);
 
     int insertHeader(@Param("requisitionNo") String requisitionNo, @Param("departmentId") Long departmentId,
                      @Param("applicantId") Long applicantId, @Param("requiredDate") LocalDate requiredDate,

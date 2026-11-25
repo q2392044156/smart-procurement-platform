@@ -37,7 +37,7 @@ smart-procurement-platform/
 │   │   ├── controller/                   # 22 个 REST 入口：路由、校验、权限注解
 │   │   ├── service/                      # 27 个业务服务：状态机、事务编排
 │   │   ├── mapper/                       # 21 个 MyBatis 接口：数据访问，SQL 在 resources/mapper
-│   │   ├── pojo/                         # 响应体 ApiResponse、TokenPair；request/ 下 41 个请求 record
+│   │   ├── pojo/                         # 响应体 ApiResponse、TokenPair；request/ 41 个请求 record、row/ 6 个决策读 record
 │   │   ├── exception/                    # BusinessException、全局异常处理
 │   │   ├── filter/                       # JWT、RequestId、内部 Agent 认证
 │   │   ├── aop/                          # 审计切面

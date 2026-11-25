@@ -24,6 +24,8 @@ import java.util.Map;
 import java.util.Set;
 import com.procuremind.platform.pojo.request.ReceiptItem;
 import com.procuremind.platform.pojo.request.ReceiptRequest;
+import com.procuremind.platform.pojo.row.PurchaseOrderStatus;
+import com.procuremind.platform.pojo.row.ReceiptItemLock;
 
 @Service
 public class ReceiptService {
@@ -58,8 +60,8 @@ public class ReceiptService {
             throw new BusinessException(HttpStatus.CONFLICT, "相同请求正在处理中");
         }
 
-        Map<String, Object> order = mapper.lockOrder(r.purchaseOrderId());
-        if (order == null || !List.of("APPROVED", "PARTIALLY_RECEIVED").contains(order.get("status").toString())) {
+        PurchaseOrderStatus order = mapper.lockOrder(r.purchaseOrderId());
+        if (order == null || !List.of("APPROVED", "PARTIALLY_RECEIVED").contains(order.status())) {
             throw new BusinessException(HttpStatus.CONFLICT, "仅已审批或部分收货订单允许收货");
         }
         if (mapper.countEnabledWarehouse(r.warehouseId()) == 0) {
@@ -80,20 +82,20 @@ public class ReceiptService {
         Long receiptId = mapper.findIdByNo(no);
 
         for (ReceiptItem input : r.items()) {
-            Map<String, Object> item = mapper.lockOrderItem(input.orderItemId(), r.purchaseOrderId());
+            ReceiptItemLock item = mapper.lockOrderItem(input.orderItemId(), r.purchaseOrderId());
             if (item == null) {
                 throw new BusinessException(HttpStatus.CONFLICT, "订单明细不存在");
             }
             if (input.quantity() == null || input.quantity().signum() <= 0) {
                 throw new BusinessException(HttpStatus.BAD_REQUEST, "收货数量必须大于0");
             }
-            BigDecimal remaining = ((BigDecimal) item.get("quantity")).subtract((BigDecimal) item.get("received_quantity"));
+            BigDecimal remaining = (item.quantity()).subtract(item.receivedQuantity());
             if (input.quantity().compareTo(remaining) > 0) {
                 throw new BusinessException(HttpStatus.CONFLICT, "收货数量超过订单剩余数量");
             }
-            String mode = item.get("tracking_mode").toString();
+            String mode = item.trackingMode();
             validateTracking(mode, input);
-            Long materialId = ((Number) item.get("material_id")).longValue();
+            Long materialId = item.materialId();
             String serialJson = write(input.serialNumbers());
             mapper.insertReceiptItem(receiptId, input.orderItemId(), materialId, input.quantity(), input.batchNo(), serialJson, user);
             Long receiptItemId = mapper.lastInsertId();
