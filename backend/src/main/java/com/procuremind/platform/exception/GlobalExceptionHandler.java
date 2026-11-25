@@ -13,6 +13,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestValueException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.http.HttpMethod;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -67,6 +69,18 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(AsyncRequestNotUsableException.class)
     void clientDisconnected(AsyncRequestNotUsableException e) {
         log.debug("Client disconnected before the response completed: {}", e.getMessage());
+    }
+    @ExceptionHandler(WebClientRequestException.class)
+    ResponseEntity<ApiResponse<Void>> agentUnreachable(WebClientRequestException e) {
+        log.warn("Agent service unreachable: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResponse.error(503, "AI助手暂时不可用，业务系统仍可正常使用"));
+    }
+    @ExceptionHandler(WebClientResponseException.class)
+    ResponseEntity<ApiResponse<Void>> agentUpstreamError(WebClientResponseException e) {
+        log.warn("Agent service returned {}: {}", e.getStatusCode(), e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ApiResponse.error(502, "AI助手返回异常，请稍后重试"));
     }
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiResponse<Void>> unknown(Exception e) {
