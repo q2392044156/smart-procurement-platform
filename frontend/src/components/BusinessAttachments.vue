@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import http from '@/api/http'
+import { formatTime } from '@/utils/datetime'
 import type { Dict } from '@/types'
 
 const props = defineProps<{ businessType: 'REQUISITION' | 'PURCHASE_ORDER', businessId: string, editable?: boolean }>()
@@ -68,7 +69,7 @@ watch(() => [props.businessType, props.businessId], load, { immediate: true })
       <el-table-column prop="fileName" label="文件名" min-width="190" show-overflow-tooltip />
       <el-table-column label="类型" width="100"><template #default="s">{{ categories[s.row.category] || s.row.category }}</template></el-table-column>
       <el-table-column prop="note" label="说明" min-width="130" show-overflow-tooltip />
-      <el-table-column prop="createdAt" label="上传时间" width="170" />
+      <el-table-column label="上传时间" width="170"><template #default="s">{{ formatTime(s.row.createdAt) }}</template></el-table-column>
       <el-table-column label="操作" width="120"><template #default="s"><el-button link type="primary" @click="download(s.row)">下载</el-button><el-button v-if="editable" link type="danger" @click="remove(s.row)">移除</el-button></template></el-table-column>
     </el-table>
     <el-dialog v-model="dialog" title="上传业务附件" width="520px" append-to-body>

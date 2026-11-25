@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import http from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
+import { formatTime } from '@/utils/datetime'
 import type { Dict } from '@/types'
 
 const auth = useAuthStore()
@@ -89,15 +90,15 @@ onMounted(load)
           <el-pagination style="margin-top:12px" layout="total, sizes, prev, pager, next" :total="pages.balance.total" v-model:current-page="pages.balance.current" v-model:page-size="pages.balance.size" :page-sizes="[10,20,50]" @current-change="loadBalances" @size-change="search" />
         </el-tab-pane>
         <el-tab-pane label="库存流水" name="ledger">
-          <el-table :data="ledger"><el-table-column prop="createdAt" label="时间" width="180"/><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="materialName" label="物资"/><el-table-column prop="businessType" label="业务类型"/><el-table-column prop="direction" label="方向"/><el-table-column prop="quantity" label="变动数量"/><el-table-column prop="balanceAfter" label="结存"/><el-table-column prop="batchNo" label="批次"/></el-table>
+          <el-table :data="ledger"><el-table-column label="时间" width="180"><template #default="s">{{ formatTime(s.row.createdAt) }}</template></el-table-column><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="materialName" label="物资"/><el-table-column prop="businessType" label="业务类型"/><el-table-column prop="direction" label="方向"/><el-table-column prop="quantity" label="变动数量"/><el-table-column prop="balanceAfter" label="结存"/><el-table-column prop="batchNo" label="批次"/></el-table>
           <el-pagination style="margin-top:12px" layout="total, sizes, prev, pager, next" :total="pages.ledger.total" v-model:current-page="pages.ledger.current" v-model:page-size="pages.ledger.size" :page-sizes="[20,50,100]" @current-change="loadLedger" @size-change="search" />
         </el-tab-pane>
         <el-tab-pane label="收货记录" name="receipt">
-          <el-table :data="receipts"><el-table-column prop="receiptNo" label="收货单号" width="180"/><el-table-column prop="orderNo" label="订单号" width="180"/><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="receiver" label="收货人"/><el-table-column prop="receiptDate" label="收货时间" width="170"/><el-table-column prop="itemCount" label="明细数" width="80"/><el-table-column prop="remark" label="备注"/><el-table-column label="操作" width="80"><template #default="s"><el-button link type="primary" @click="openReceipt(s.row)">详情</el-button></template></el-table-column></el-table>
+          <el-table :data="receipts"><el-table-column prop="receiptNo" label="收货单号" width="180"/><el-table-column prop="orderNo" label="订单号" width="180"/><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="receiver" label="收货人"/><el-table-column label="收货时间" width="170"><template #default="s">{{ formatTime(s.row.receiptDate) }}</template></el-table-column><el-table-column prop="itemCount" label="明细数" width="80"/><el-table-column prop="remark" label="备注"/><el-table-column label="操作" width="80"><template #default="s"><el-button link type="primary" @click="openReceipt(s.row)">详情</el-button></template></el-table-column></el-table>
           <el-pagination style="margin-top:12px" layout="total, sizes, prev, pager, next" :total="pages.receipt.total" v-model:current-page="pages.receipt.current" v-model:page-size="pages.receipt.size" :page-sizes="[10,20,50]" @current-change="loadReceipts" @size-change="search" />
         </el-tab-pane>
         <el-tab-pane label="出库记录" name="issue">
-          <el-table :data="issues"><el-table-column prop="issueNo" label="出库单号" width="180"/><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="materialName" label="物资"/><el-table-column prop="quantity" label="数量" width="90"/><el-table-column prop="batchNo" label="批次"/><el-table-column prop="purpose" label="用途"/><el-table-column prop="department" label="领用部门"/><el-table-column prop="requester" label="领用人"/><el-table-column prop="issuedAt" label="出库时间" width="170"/></el-table>
+          <el-table :data="issues"><el-table-column prop="issueNo" label="出库单号" width="180"/><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="materialName" label="物资"/><el-table-column prop="quantity" label="数量" width="90"/><el-table-column prop="batchNo" label="批次"/><el-table-column prop="purpose" label="用途"/><el-table-column prop="department" label="领用部门"/><el-table-column prop="requester" label="领用人"/><el-table-column label="出库时间" width="170"><template #default="s">{{ formatTime(s.row.issuedAt) }}</template></el-table-column></el-table>
           <el-pagination style="margin-top:12px" layout="total, sizes, prev, pager, next" :total="pages.issue.total" v-model:current-page="pages.issue.current" v-model:page-size="pages.issue.size" :page-sizes="[10,20,50]" @current-change="loadIssues" @size-change="search" />
         </el-tab-pane>
       </el-tabs>
