@@ -1,7 +1,8 @@
 package com.procuremind.platform.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.procuremind.platform.exception.BusinessException;
-import com.procuremind.platform.service.DocumentNumberService;
+import com.procuremind.platform.mapper.IssueMapper;
 import com.procuremind.platform.utils.SecurityUtils;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
@@ -9,13 +10,11 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,11 +27,11 @@ import java.util.Map;
  */
 @Service
 public class IssueService {
-    private final JdbcTemplate jdbc;
+    private final IssueMapper mapper;
     private final DocumentNumberService numbers;
 
-    public IssueService(JdbcTemplate jdbc, DocumentNumberService numbers) {
-        this.jdbc = jdbc;
+    public IssueService(IssueMapper mapper, DocumentNumberService numbers) {
+        this.mapper = mapper;
         this.numbers = numbers;
     }
 
@@ -42,10 +41,11 @@ public class IssueService {
         Long warehouseId = request.warehouseId();
         Long materialId = request.materialId();
         BigDecimal quantity = request.quantity();
-        if (count("select count(*) from md_warehouse where id=? and enabled=1 and deleted=0", warehouseId) == 0) {
+        if (mapper.countEnabledWarehouse(warehouseId) == 0) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "仓库不存在或已停用");
         }
-        Map<String, Object> material = jdbc.queryForMap("select tracking_mode,enabled from md_material where id=? and deleted=0", materialId);
+        Map<String, Object> material = mapper.findMaterial(materialId);
+        if (material == null) throw new BusinessException(HttpStatus.NOT_FOUND, "物资不存在");
         if (((Number) material.get("enabled")).intValue() != 1) throw new BusinessException(HttpStatus.BAD_REQUEST, "物资已停用");
         String mode = material.get("tracking_mode").toString();
         String batchNo = blank(request.batchNo());
@@ -61,36 +61,25 @@ public class IssueService {
 
         String no = numbers.next("OUT");
         Long departmentId = request.departmentId() == null ? user.departmentId() : request.departmentId();
-        jdbc.update("""
-                insert into inv_issue(issue_no,warehouse_id,material_id,quantity,batch_no,serial_numbers_json,purpose,
-                    department_id,requester_id,issued_by,issued_at,remark,created_by,updated_by)
-                values(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                """, no, warehouseId, materialId, quantity, batchNo, json(serials), request.purpose().trim(),
-                departmentId, user.id(), user.id(), Instant.now(), blank(request.remark()), user.id(), user.id());
-        Long issueId = jdbc.queryForObject("select id from inv_issue where issue_no=?", Long.class, no);
+        mapper.insertIssue(no, warehouseId, materialId, quantity, batchNo, json(serials), request.purpose().trim(),
+                departmentId, user.id(), Instant.now(), blank(request.remark()));
+        Long issueId = mapper.findIdByNo(no);
 
         if ("SERIAL".equals(mode)) {
             for (String serial : serials) {
-                int updated = jdbc.update("""
-                        update inv_serial set status='ISSUED'
-                        where warehouse_id=? and material_id=? and serial_no=? and status='IN_STOCK'
-                        """, warehouseId, materialId, serial.trim());
-                if (updated == 0) throw new BusinessException(HttpStatus.CONFLICT, "序列号不存在、已出库或不属于该仓库：" + serial);
+                if (mapper.issueSerial(warehouseId, materialId, serial.trim()) == 0) {
+                    throw new BusinessException(HttpStatus.CONFLICT, "序列号不存在、已出库或不属于该仓库：" + serial);
+                }
             }
         }
         if ("BATCH".equals(mode)) {
-            int updated = jdbc.update("""
-                    update inv_batch set quantity=quantity-?
-                    where warehouse_id=? and material_id=? and batch_no=? and quantity>=?
-                    """, quantity, warehouseId, materialId, batchNo, quantity);
-            if (updated == 0) throw new BusinessException(HttpStatus.CONFLICT, "批次库存不足或批次号不存在");
+            if (mapper.decrementBatch(warehouseId, materialId, batchNo, quantity) == 0) {
+                throw new BusinessException(HttpStatus.CONFLICT, "批次库存不足或批次号不存在");
+            }
         }
 
         BigDecimal balance = decrementBalance(warehouseId, materialId, quantity, user.id());
-        jdbc.update("""
-                insert into inv_ledger(warehouse_id,material_id,business_type,business_id,direction,quantity,balance_after,batch_no,created_by,created_at)
-                values(?,?,'ISSUE',?,'OUT',?,?,?,?,utc_timestamp(6))
-                """, warehouseId, materialId, issueId, quantity, balance, batchNo, user.id());
+        mapper.insertLedger(warehouseId, materialId, issueId, quantity, balance, batchNo, user.id());
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", String.valueOf(issueId));
@@ -104,70 +93,38 @@ public class IssueService {
         int page = Math.max(current, 1);
         int pageSize = Math.min(Math.max(size, 1), 100);
         String like = "%" + (keyword == null ? "" : keyword.trim()) + "%";
-        String clause = "i.deleted=0 and (i.issue_no like ? or m.code like ? or m.name like ?)";
-        Long total = jdbc.queryForObject("""
-                select count(*) from inv_issue i join md_material m on m.id=i.material_id where """ + " " + clause, Long.class, like, like, like);
-        List<Map<String, Object>> records = jdbc.queryForList("""
-                select cast(i.id as char) id,i.issue_no issueNo,w.name warehouse,m.code materialCode,m.name materialName,
-                       i.quantity,i.batch_no batchNo,i.purpose,d.name department,u.display_name requester,
-                       i.issued_at issuedAt,i.remark
-                from inv_issue i
-                join md_warehouse w on w.id=i.warehouse_id
-                join md_material m on m.id=i.material_id
-                join sys_department d on d.id=i.department_id
-                join sys_user u on u.id=i.requester_id
-                where """ + " " + clause + " order by i.id desc limit ? offset ?",
-                like, like, like, pageSize, (page - 1) * pageSize);
-        long totalCount = total == null ? 0 : total;
+        int total = mapper.countPage(like);
+        List<Map<String, Object>> records = mapper.page(like, pageSize, (page - 1) * pageSize);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("records", records);
-        result.put("total", (int) totalCount);
+        result.put("total", total);
         result.put("current", page);
         result.put("size", pageSize);
-        result.put("pages", (int) ((totalCount + pageSize - 1) / pageSize));
+        result.put("pages", (int) (((long) total + pageSize - 1) / pageSize));
         return result;
     }
 
     public Map<String, Object> detail(Long id) {
-        Map<String, Object> issue = jdbc.queryForMap("""
-                select cast(i.id as char) id,i.issue_no issueNo,w.name warehouse,cast(i.warehouse_id as char) warehouseId,
-                       m.code materialCode,m.name materialName,m.tracking_mode trackingMode,cast(i.material_id as char) materialId,
-                       i.quantity,i.batch_no batchNo,i.serial_numbers_json serialNumbers,i.purpose,
-                       d.name department,u.display_name requester,i.issued_at issuedAt,i.remark
-                from inv_issue i
-                join md_warehouse w on w.id=i.warehouse_id
-                join md_material m on m.id=i.material_id
-                join sys_department d on d.id=i.department_id
-                join sys_user u on u.id=i.requester_id
-                where i.id=? and i.deleted=0
-                """, id);
+        Map<String, Object> issue = mapper.findDetail(id);
+        if (issue == null) throw new BusinessException(HttpStatus.NOT_FOUND, "出库单不存在");
         return issue;
     }
 
     private BigDecimal decrementBalance(Long warehouseId, Long materialId, BigDecimal quantity, Long user) {
-        List<Map<String, Object>> rows = jdbc.queryForList("""
-                select id,quantity,version from inv_balance where warehouse_id=? and material_id=? and deleted=0 for update
-                """, warehouseId, materialId);
-        if (rows.isEmpty()) throw new BusinessException(HttpStatus.CONFLICT, "该仓库没有此物资的库存记录");
-        Map<String, Object> row = rows.getFirst();
+        Map<String, Object> row = mapper.lockBalance(warehouseId, materialId);
+        if (row == null) throw new BusinessException(HttpStatus.CONFLICT, "该仓库没有此物资的库存记录");
         BigDecimal current = (BigDecimal) row.get("quantity");
         if (current.compareTo(quantity) < 0) {
             throw new BusinessException(HttpStatus.CONFLICT, "库存不足，当前可用 " + current.stripTrailingZeros().toPlainString());
         }
         BigDecimal next = current.subtract(quantity);
-        jdbc.update("update inv_balance set quantity=?,version=version+1,updated_by=? where id=? and version=?",
-                next, user, row.get("id"), row.get("version"));
+        mapper.updateBalance(((Number) row.get("id")).longValue(), next, user, row.get("version"));
         return next;
     }
 
     private String json(List<String> serials) {
-        try { return serials.isEmpty() ? null : new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(serials); }
+        try { return serials.isEmpty() ? null : new ObjectMapper().writeValueAsString(serials); }
         catch (Exception e) { throw new IllegalStateException(e); }
-    }
-
-    private long count(String sql, Object... args) {
-        Long value = jdbc.queryForObject(sql, Long.class, args);
-        return value == null ? 0 : value;
     }
 
     private String blank(String value) { return value == null || value.isBlank() ? null : value.trim(); }

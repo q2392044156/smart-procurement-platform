@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.procuremind.platform.mapper.FileMapper">
+
+    <insert id="insertMetadata">
+        insert into fs_file_metadata(original_name,object_key,content_type,size_bytes,bucket,uploader_id)
+        values(#{originalName},#{objectKey},#{contentType},#{size,jdbcType=BIGINT},#{bucket},#{uploaderId})
+    </insert>
+
+    <select id="findIdByObjectKey" resultType="long">
+        select id from fs_file_metadata where object_key=#{objectKey}
+    </select>
+
+    <select id="findForRead" resultType="map">
+        select original_name,object_key,bucket from fs_file_metadata where id=#{id} and deleted=0
+    </select>
+
+    <select id="findForDownload" resultType="map">
+        select original_name,object_key,bucket,uploader_id from fs_file_metadata where id=#{id} and deleted=0
+    </select>
+
+    <select id="findForRaw" resultType="map">
+        select original_name,object_key,bucket,content_type from fs_file_metadata where id=#{id} and deleted=0
+    </select>
+
+    <select id="findForDelete" resultType="map">
+        select object_key,bucket,uploader_id from fs_file_metadata where id=#{id} and deleted=0
+    </select>
+
+    <select id="findForValidation" resultType="map">
+        select object_key,content_type,bucket,size_bytes from fs_file_metadata where id=#{id} and deleted=0
+    </select>
+
+    <update id="softDelete">
+        update fs_file_metadata set deleted=1 where id=#{id}
+    </update>
+
+    <select id="countSupplierQualification" resultType="int">
+        select count(*) from sp_supplier_qualification where file_id=#{fileId} and deleted=0
+    </select>
+
+    <select id="findUploaderId" resultType="long">
+        select uploader_id from fs_file_metadata where id=#{fileId} and deleted=0
+    </select>
+
+    <select id="listAttachments" resultType="map">
+        select cast(a.id as char) id,a.business_type businessType,cast(a.business_id as char) businessId,
+               cast(a.file_id as char) fileId,f.original_name fileName,f.content_type contentType,f.size_bytes sizeBytes,
+               a.category,a.note,a.created_at createdAt
+        from fs_business_attachment a
+        join fs_file_metadata f on f.id=a.file_id and f.deleted=0
+        where a.business_type=#{businessType} and a.business_id=#{businessId} and a.deleted=0
+        order by a.id desc
+    </select>
+
+    <select id="countAttachment" resultType="int">
+        select count(*) from fs_business_attachment
+        where business_type=#{businessType} and business_id=#{businessId} and file_id=#{fileId} and deleted=0
+    </select>
+
+    <insert id="insertAttachment">
+        insert into fs_business_attachment(business_type,business_id,file_id,category,note,created_by,updated_by)
+        values(#{businessType},#{businessId},#{fileId},#{category},#{note,jdbcType=VARCHAR},#{userId},#{userId})
+    </insert>
+
+    <select id="findMaxAttachmentId" resultType="long">
+        select max(id) from fs_business_attachment
+        where business_type=#{businessType} and business_id=#{businessId} and deleted=0
+    </select>
+
+    <select id="findAttachment" resultType="map">
+        select business_type businessType,business_id businessId
+        from fs_business_attachment where id=#{id} and deleted=0
+    </select>
+
+    <update id="softDeleteAttachment">
+        update fs_business_attachment set deleted=1,updated_by=#{userId} where id=#{id}
+    </update>
+
+    <update id="unlinkBusiness">
+        update fs_business_attachment set deleted=1,updated_by=#{userId}
+        where business_type=#{businessType} and business_id=#{businessId} and deleted=0
+    </update>
+
+    <select id="countByFile" resultType="int">
+        select count(*) from fs_business_attachment where file_id=#{fileId} and deleted=0
+    </select>
+
+    <select id="listByFile" resultType="map">
+        select business_type businessType,business_id businessId
+        from fs_business_attachment where file_id=#{fileId} and deleted=0
+    </select>
+
+    <select id="countWritableRequisition" resultType="int">
+        select count(*) from pr_requisition
+        where id=#{id} and deleted=0 and status in ('DRAFT','REJECTED') and (applicant_id=#{userId} or #{admin}=1)
+    </select>
+
+    <select id="countWritablePurchaseOrder" resultType="int">
+        select count(*) from po_purchase_order
+        where id=#{id} and deleted=0 and status in ('DRAFT','REJECTED') and (purchaser_id=#{userId} or #{admin}=1)
+    </select>
+
+</mapper>

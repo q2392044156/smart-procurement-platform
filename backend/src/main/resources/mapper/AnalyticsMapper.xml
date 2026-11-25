@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.procuremind.platform.mapper.AnalyticsMapper">
+
+    <!-- 订单类指标统一应用当前用户的数据范围；scope 由 DataScopeService 生成，只含服务端常量与数字。 -->
+    <select id="supplierScorecard" resultType="map">
+        select cast(s.id as char) supplierId,s.code,s.name,s.level,s.status,s.score,
+          (select count(*) from po_purchase_order o join sys_user u on u.id=o.purchaser_id
+            where o.supplier_id=s.id and o.deleted=0 and o.status&lt;&gt;'CANCELLED'
+              and year(o.created_at)=#{year} and ${scope}) orderCount,
+          (select coalesce(sum(o.total_amount),0) from po_purchase_order o join sys_user u on u.id=o.purchaser_id
+            where o.supplier_id=s.id and o.deleted=0 and o.status&lt;&gt;'CANCELLED'
+              and year(o.created_at)=#{year} and ${scope}) amount,
+          (select min(q.valid_until) from sp_supplier_qualification q
+            where q.supplier_id=s.id and q.status='VALID') nearestQualificationExpiry,
+          (select round(avg(datediff(r.receipt_date,o.created_at)),1)
+            from inv_receipt r join po_purchase_order o on o.id=r.purchase_order_id
+            where o.supplier_id=s.id and r.deleted=0 and o.deleted=0) avgDeliveryDays,
+          (select count(*) from po_purchase_order o
+            where o.supplier_id=s.id and o.deleted=0 and o.status='CANCELLED') cancelledCount
+        from sp_supplier s where s.id=#{supplierId} and s.deleted=0
+    </select>
+
+    <select id="inventoryRisk" resultType="map">
+        select cast(m.id as char) materialId,m.code materialCode,m.name materialName,w.name warehouse,
+               b.quantity,m.min_stock minStock,
+               cast(greatest(m.min_stock-b.quantity,0) as decimal(18,2)) shortage,
+               cast(coalesce((select sum(i.quantity-i.received_quantity)
+                 from po_purchase_order_item i join po_purchase_order o on o.id=i.purchase_order_id
+                 where i.material_id=m.id and i.deleted=0 and o.deleted=0
+                   and o.status in ('APPROVED','PARTIALLY_RECEIVED')),0) as decimal(18,2)) inTransit
+        from inv_balance b
+        join md_material m on m.id=b.material_id
+        join md_warehouse w on w.id=b.warehouse_id
+        where b.deleted=0 and b.quantity&lt;m.min_stock
+        order by shortage desc
+    </select>
+
+    <select id="spendByDepartment" resultType="map">
+        select d.name name,count(distinct o.id) orders,
+               cast(coalesce(sum(i.quantity*i.unit_price),0) as decimal(18,2)) amount
+        from po_purchase_order o
+        join po_purchase_order_item i on i.purchase_order_id=o.id and i.deleted=0
+        join sys_user u on u.id=o.purchaser_id
+        join sys_department d on d.id=u.department_id
+        where o.deleted=0 and o.status&lt;&gt;'CANCELLED' and year(o.created_at)=#{year} and ${scope}
+        group by d.name
+        order by amount desc
+    </select>
+
+    <select id="spendBySupplier" resultType="map">
+        select s.name name,count(distinct o.id) orders,
+               cast(coalesce(sum(i.quantity*i.unit_price),0) as decimal(18,2)) amount
+        from po_purchase_order o
+        join po_purchase_order_item i on i.purchase_order_id=o.id and i.deleted=0
+        join sys_user u on u.id=o.purchaser_id
+        join sp_supplier s on s.id=o.supplier_id
+        where o.deleted=0 and o.status&lt;&gt;'CANCELLED' and year(o.created_at)=#{year} and ${scope}
+        group by s.name
+        order by amount desc
+    </select>
+
+    <select id="spendByCategory" resultType="map">
+        select c.name name,count(distinct o.id) orders,
+               cast(coalesce(sum(i.quantity*i.unit_price),0) as decimal(18,2)) amount
+        from po_purchase_order o
+        join po_purchase_order_item i on i.purchase_order_id=o.id and i.deleted=0
+        join sys_user u on u.id=o.purchaser_id
+        join md_material m on m.id=i.material_id
+        join md_material_category c on c.id=m.category_id
+        where o.deleted=0 and o.status&lt;&gt;'CANCELLED' and year(o.created_at)=#{year} and ${scope}
+        group by c.name
+        order by amount desc
+    </select>
+
+    <select id="spendByMonth" resultType="map">
+        select date_format(o.created_at,'%Y-%m') name,count(distinct o.id) orders,
+               cast(coalesce(sum(i.quantity*i.unit_price),0) as decimal(18,2)) amount
+        from po_purchase_order o
+        join po_purchase_order_item i on i.purchase_order_id=o.id and i.deleted=0
+        join sys_user u on u.id=o.purchaser_id
+        where o.deleted=0 and o.status&lt;&gt;'CANCELLED' and year(o.created_at)=#{year} and ${scope}
+        group by date_format(o.created_at,'%Y-%m')
+        order by amount desc
+    </select>
+
+</mapper>

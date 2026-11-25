@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.procuremind.platform.mapper.PurchaseOrderMapper">
+
+    <!-- list 额外带附件数、page 额外带收货数，是两套既有口径，保持原样。 -->
+    <sql id="listColumns">
+        cast(o.id as char) id,
+        o.order_no orderNo,
+        cast(o.purchaser_id as char) purchaserId,
+        s.name supplier,
+        u.display_name purchaser,
+        o.delivery_date deliveryDate,
+        o.total_amount totalAmount,
+        o.status,
+        o.created_at createdAt
+    </sql>
+
+    <sql id="pageWhere">
+        o.deleted=0 and ${scope}
+        <if test="keyword != null and keyword != ''">
+            and (o.order_no like concat('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null and status != ''">
+            and o.status=#{status}
+        </if>
+    </sql>
+
+    <select id="list" resultType="map">
+        select <include refid="listColumns"/>,
+        (select count(*) from inv_receipt r where r.purchase_order_id=o.id and r.deleted=0) receiptCount,
+        (select count(*) from fs_business_attachment a
+         where a.business_type='PURCHASE_ORDER' and a.business_id=o.id and a.deleted=0) attachmentCount
+        from po_purchase_order o
+        join sp_supplier s on s.id=o.supplier_id
+        join sys_user u on u.id=o.purchaser_id
+        where o.deleted=0 and ${scope}
+        order by o.id desc
+    </select>
+
+    <select id="countPage" resultType="long">
+        select count(*) from po_purchase_order o
+        join sys_user u on u.id=o.purchaser_id
+        where <include refid="pageWhere"/>
+    </select>
+
+    <select id="page" resultType="map">
+        select <include refid="listColumns"/>,
+        (select count(*) from inv_receipt r where r.purchase_order_id=o.id and r.deleted=0) receiptCount
+        from po_purchase_order o
+        join sp_supplier s on s.id=o.supplier_id
+        join sys_user u on u.id=o.purchaser_id
+        where <include refid="pageWhere"/>
+        order by o.id desc limit #{size} offset #{offset}
+    </select>
+
+    <select id="findDetail" resultType="map">
+        select cast(o.id as char) id, o.order_no orderNo,
+               cast(o.requisition_id as char) requisitionId,
+               cast(o.supplier_id as char) supplierId,
+               cast(o.purchaser_id as char) purchaserId,
+               o.delivery_date deliveryDate, o.tax_rate taxRate, o.total_amount totalAmount,
+               o.status, o.terms,
+               o.process_instance_id processInstanceId,
+               o.cancellation_reason cancellationReason,
+               o.closed_at closedAt
+        from po_purchase_order o
+        where o.id=#{id} and o.deleted=0
+    </select>
+
+    <select id="findItems" resultType="map">
+        select cast(i.id as char) id,
+               cast(i.material_id as char) materialId,
+               m.code materialCode, m.name materialName, m.tracking_mode trackingMode,
+               i.quantity, i.received_quantity receivedQuantity,
+               i.unit_price unitPrice, i.tax_rate taxRate, i.remark
+        from po_purchase_order_item i
+        join md_material m on m.id=i.material_id
+        where i.purchase_order_id=#{id} and i.deleted=0
+    </select>
+
+    <select id="lockRequisition" resultType="map">
+        select status from pr_requisition where id=#{id} and deleted=0 for update
+    </select>
+
+    <select id="findRequisitionItems" resultType="map">
+        select material_id, quantity, estimated_unit_price
+        from pr_requisition_item
+        where requisition_id=#{requisitionId} and deleted=0
+    </select>
+
+    <select id="countQualifiedSupplier" resultType="int">
+        select count(*) from sp_supplier where id=#{supplierId} and status='QUALIFIED' and deleted=0
+    </select>
+
+    <select id="findDefaultSupplierId" resultType="long">
+        select id from sp_supplier where status='QUALIFIED' and deleted=0 order by score desc, id limit 1
+    </select>
+
+    <insert id="insertHeader">
+        insert into po_purchase_order(order_no, requisition_id, supplier_id, purchaser_id, delivery_date,
+                                      tax_rate, total_amount, terms, created_by, updated_by)
+        values (#{orderNo}, #{requisitionId,jdbcType=BIGINT}, #{supplierId}, #{purchaserId}, #{deliveryDate},
+                #{taxRate}, #{totalAmount}, #{terms,jdbcType=VARCHAR}, #{userId}, #{userId})
+    </insert>
+
+    <select id="findIdByNo" resultType="long">
+        select id from po_purchase_order where order_no=#{orderNo}
+    </select>
+
+    <insert id="insertItem">
+        insert into po_purchase_order_item(purchase_order_id, material_id, quantity, unit_price, tax_rate,
+                                           remark, created_by, updated_by)
+        values (#{orderId}, #{materialId}, #{quantity}, #{unitPrice}, #{taxRate},
+                #{remark,jdbcType=VARCHAR}, #{userId}, #{userId})
+    </insert>
+
+    <update id="markRequisitionConverted">
+        update pr_requisition set status='CONVERTED', updated_by=#{userId} where id=#{requisitionId}
+    </update>
+
+    <select id="lockById" resultType="map">
+        select purchaser_id, requisition_id, supplier_id, status
+        from po_purchase_order
+        where id=#{id} and deleted=0 for update
+    </select>
+
+    <select id="findItemQuantities" resultType="map">
+        select id, quantity from po_purchase_order_item
+        where purchase_order_id=#{orderId} and deleted=0
+    </select>
+
+    <update id="updateHeader">
+        update po_purchase_order
+        set supplier_id=#{supplierId}, delivery_date=#{deliveryDate}, tax_rate=#{taxRate},
+            total_amount=#{totalAmount}, terms=#{terms,jdbcType=VARCHAR}, status='DRAFT',
+            process_instance_id=null, cancellation_reason=null, updated_by=#{userId}
+        where id=#{id}
+    </update>
+
+    <update id="updateDirectHeader">
+        update po_purchase_order
+        set supplier_id=#{supplierId}, delivery_date=#{deliveryDate}, tax_rate=#{taxRate},
+            total_amount=#{totalAmount}, terms=#{terms,jdbcType=VARCHAR}, status='DRAFT',
+            process_instance_id=null, updated_by=#{userId}
+        where id=#{id}
+    </update>
+
+    <update id="updateItemPrice">
+        update po_purchase_order_item
+        set unit_price=#{unitPrice}, tax_rate=#{taxRate}, remark=#{remark,jdbcType=VARCHAR},
+            updated_by=#{userId}
+        where id=#{id} and purchase_order_id=#{orderId} and deleted=0
+    </update>
+
+    <update id="updateStatus">
+        update po_purchase_order
+        set status=#{status}, process_instance_id=#{processInstanceId}, updated_by=#{userId}
+        where id=#{id}
+    </update>
+
+    <update id="cancel">
+        update po_purchase_order
+        set status='CANCELLED', cancellation_reason=#{reason}, process_instance_id=null, updated_by=#{userId}
+        where id=#{id}
+    </update>
+
+    <update id="closeOrder">
+        update po_purchase_order
+        set status='CLOSED', closed_at=utc_timestamp(6), updated_by=#{userId}
+        where id=#{id}
+    </update>
+
+    <update id="softDeleteItems">
+        update po_purchase_order_item set deleted=1, updated_by=#{userId}
+        where purchase_order_id=#{orderId} and deleted=0
+    </update>
+
+    <update id="softDelete">
+        update po_purchase_order set deleted=1, updated_by=#{userId} where id=#{id}
+    </update>
+
+    <select id="countReceipts" resultType="int">
+        select count(*) from inv_receipt where purchase_order_id=#{orderId} and deleted=0
+    </select>
+
+    <select id="countActiveOrdersByRequisition" resultType="int">
+        select count(*) from po_purchase_order
+        where requisition_id=#{requisitionId} and deleted=0 and status&lt;&gt;'CANCELLED'
+    </select>
+
+    <update id="restoreRequisition">
+        update pr_requisition set status='APPROVED', updated_by=#{userId}
+        where id=#{requisitionId} and deleted=0 and status='CONVERTED'
+    </update>
+
+    <select id="priceHistory" resultType="map">
+        select cast(o.id as char) orderId, o.order_no orderNo, s.name supplierName,
+               i.unit_price unitPrice, i.quantity quantity, o.created_at createdAt
+        from po_purchase_order_item i
+        join po_purchase_order o on o.id=i.purchase_order_id
+        join sp_supplier s on s.id=o.supplier_id
+        join sys_user u on u.id=o.purchaser_id
+        where i.material_id=#{materialId} and i.deleted=0 and o.deleted=0 and ${scope}
+        order by o.created_at desc limit 50
+    </select>
+
+    <select id="countEnabledMaterial" resultType="int">
+        select count(*) from md_material where id=#{materialId} and enabled=1 and deleted=0
+    </select>
+
+</mapper>

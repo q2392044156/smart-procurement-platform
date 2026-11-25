@@ -3,6 +3,7 @@ package com.procuremind.platform.service;
 import com.procuremind.platform.exception.BusinessException;
 import com.procuremind.platform.service.FileStorageService;
 import com.procuremind.platform.anno.CurrentUser;
+import com.procuremind.platform.mapper.KnowledgeMapper;
 import com.procuremind.platform.service.DataScopeService;
 import com.procuremind.platform.utils.SecurityUtils;
 import jakarta.validation.constraints.Max;
@@ -12,17 +13,14 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 知识库文档管理：元数据、版本、可见范围与下载授权。
@@ -34,16 +32,16 @@ public class KnowledgeService {
     private static final String VISIBILITY = "ALL|DEPARTMENT|DEPARTMENT_AND_CHILDREN|SELF|CUSTOM";
     private static final String STATUS = "DRAFT|PUBLISHED|ARCHIVED";
 
-    private final JdbcTemplate jdbc;
+    private final KnowledgeMapper mapper;
     private final DataScopeService dataScope;
     private final FileStorageService files;
     private final com.procuremind.platform.service.FileContentValidator contentValidator;
     private final com.procuremind.platform.service.DocumentNumberService numbers;
 
-    public KnowledgeService(JdbcTemplate jdbc, DataScopeService dataScope, FileStorageService files,
+    public KnowledgeService(KnowledgeMapper mapper, DataScopeService dataScope, FileStorageService files,
                             com.procuremind.platform.service.FileContentValidator contentValidator,
                             com.procuremind.platform.service.DocumentNumberService numbers) {
-        this.jdbc = jdbc; this.dataScope = dataScope; this.files = files;
+        this.mapper = mapper; this.dataScope = dataScope; this.files = files;
         this.contentValidator = contentValidator; this.numbers = numbers;
     }
 
@@ -52,44 +50,17 @@ public class KnowledgeService {
     public Map<String, Object> list(String keyword, String category, String status, int current, int size) {
         int page = Math.max(current, 1);
         int pageSize = Math.min(Math.max(size, 1), 100);
-        List<String> where = new ArrayList<>();
-        List<Object> args = new ArrayList<>();
-        where.add("d.deleted=0");
-        if (keyword != null && !keyword.isBlank()) {
-            where.add("(d.title like ? or d.code like ? or d.tags like ? or d.summary like ?)");
-            String like = "%" + keyword.trim() + "%";
-            args.addAll(List.of(like, like, like, like));
-        }
-        if (category != null && !category.isBlank()) { where.add("d.category=?"); args.add(category); }
-        if (canManage()) {
-            if (status != null && !status.isBlank()) { where.add("d.status=?"); args.add(status); }
-        } else {
-            where.add("d.status='PUBLISHED'");
-        }
-        Clause visible = visibilityClause();
-        where.add(visible.sql());
-        args.addAll(Arrays.asList(visible.args()));
-
-        String filter = String.join(" and ", where);
-        Long total = jdbc.queryForObject("select count(*) from kb_document d where " + filter, Long.class, args.toArray());
-        List<Object> pageArgs = new ArrayList<>(args);
-        pageArgs.add(pageSize);
-        pageArgs.add((page - 1) * pageSize);
-        List<Map<String, Object>> records = jdbc.queryForList("""
-                select cast(d.id as char) id,d.code,d.title,d.category,d.summary,d.tags,
-                       cast(d.owner_department_id as char) ownerDepartmentId,dep.name ownerDepartment,
-                       d.visibility,d.status,d.current_version currentVersion,
-                       cast(d.file_id as char) fileId,f.original_name fileName,f.size_bytes sizeBytes,
-                       d.effective_from effectiveFrom,d.effective_to effectiveTo,
-                       d.created_at createdAt,d.updated_at updatedAt,u.display_name createdByName,
-                       (select count(*) from kb_document_acl a where a.document_id=d.id and a.subject_type='USER') userAclCount,
-                       (select count(*) from kb_document_acl a where a.document_id=d.id and a.subject_type='ROLE') roleAclCount
-                from kb_document d
-                join fs_file_metadata f on f.id=d.file_id and f.deleted=0
-                left join sys_department dep on dep.id=d.owner_department_id
-                left join sys_user u on u.id=d.created_by
-                where """ + " " + filter + " order by d.updated_at desc,d.id desc limit ? offset ?", pageArgs.toArray());
-        long totalCount = total == null ? 0 : total;
+        boolean manage = canManage();
+        String normalizedKeyword = keyword == null || keyword.isBlank() ? null : keyword.trim();
+        String normalizedCategory = category == null || category.isBlank() ? null : category;
+        String normalizedStatus = status == null || status.isBlank() ? null : status;
+        Visibility visible = visibility();
+        long totalCount = mapper.countDocuments(normalizedKeyword, normalizedCategory, normalizedStatus, manage,
+                visible.userId(), visible.userIdKey(), visible.departmentId(),
+                visible.departmentIds(), visible.roles());
+        List<Map<String, Object>> records = mapper.pageDocuments(normalizedKeyword, normalizedCategory,
+                normalizedStatus, manage, visible.userId(), visible.userIdKey(), visible.departmentId(),
+                visible.departmentIds(), visible.roles(), pageSize, (page - 1) * pageSize);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("records", records);
         result.put("total", (int) totalCount);
@@ -101,27 +72,10 @@ public class KnowledgeService {
 
     public Map<String, Object> detail(Long id) {
         loadReadable(id);
-        Map<String, Object> doc = jdbc.queryForMap("""
-                select cast(d.id as char) id,d.code,d.title,d.category,d.summary,d.tags,
-                       cast(d.owner_department_id as char) ownerDepartmentId,dep.name ownerDepartment,
-                       d.visibility,d.status,d.current_version currentVersion,
-                       cast(d.file_id as char) fileId,f.original_name fileName,f.content_type contentType,f.size_bytes sizeBytes,
-                       d.effective_from effectiveFrom,d.effective_to effectiveTo,
-                       d.created_at createdAt,d.updated_at updatedAt,u.display_name createdByName
-                from kb_document d
-                join fs_file_metadata f on f.id=d.file_id and f.deleted=0
-                left join sys_department dep on dep.id=d.owner_department_id
-                left join sys_user u on u.id=d.created_by
-                where d.id=? and d.deleted=0
-                """, id);
-        doc.put("versions", jdbc.queryForList("""
-                select cast(v.id as char) id,v.version,cast(v.file_id as char) fileId,v.file_name fileName,
-                       v.change_note changeNote,v.created_at createdAt,u.display_name createdByName
-                from kb_document_version v left join sys_user u on u.id=v.created_by
-                where v.document_id=? order by v.version desc
-                """, id));
+        Map<String, Object> doc = mapper.findDetail(id);
+        doc.put("versions", mapper.findVersions(id));
         if (canManage()) {
-            doc.put("acl", jdbc.queryForList("select cast(id as char) id,subject_type subjectType,subject_key subjectKey from kb_document_acl where document_id=? order by subject_type,subject_key", id));
+            doc.put("acl", mapper.findAcl(id));
         }
         return doc;
     }
@@ -133,45 +87,26 @@ public class KnowledgeService {
 
     /** 检索服务使用的已发布内容，忽略维护权限，只按可见范围放行。 */
     public Map<String, Object> publishedContent(Long id) {
-        Clause visible = visibilityClause();
-        List<Object> args = new ArrayList<>();
-        args.add(id);
-        args.addAll(Arrays.asList(visible.args()));
-        List<Map<String, Object>> rows = jdbc.queryForList("""
-                select cast(d.file_id as char) fileId from kb_document d
-                where d.id=? and d.deleted=0 and d.status='PUBLISHED' and """ + " " + visible.sql(), args.toArray());
-        if (rows.isEmpty()) throw new BusinessException(HttpStatus.NOT_FOUND, "文档不存在或不在当前可见范围内");
-        return files.presignRead(Long.valueOf(rows.getFirst().get("fileId").toString()));
+        Map<String, Object> row = findPublished(id);
+        return files.presignRead(Long.valueOf(row.get("fileId").toString()));
     }
 
     /** 检索服务内部读取已发布原文，避免预签名 URL 的 host 在容器内不可达。 */
     public Map<String, Object> publishedRaw(Long id) {
-        Clause visible = visibilityClause();
-        List<Object> args = new ArrayList<>();
-        args.add(id);
-        args.addAll(Arrays.asList(visible.args()));
-        List<Map<String, Object>> rows = jdbc.queryForList("""
-                select cast(d.file_id as char) fileId from kb_document d
-                where d.id=? and d.deleted=0 and d.status='PUBLISHED' and """ + " " + visible.sql(), args.toArray());
-        if (rows.isEmpty()) throw new BusinessException(HttpStatus.NOT_FOUND, "文档不存在或不在当前可见范围内");
-        return files.raw(Long.valueOf(rows.getFirst().get("fileId").toString()));
+        Map<String, Object> row = findPublished(id);
+        return files.raw(Long.valueOf(row.get("fileId").toString()));
     }
 
     /** 当前身份可见的已发布文档，供检索前过滤。 */
     public List<Map<String, Object>> visibleDocumentIds() {
-        Clause visible = visibilityClause();
-        return jdbc.queryForList("""
-                select cast(d.id as char) id,d.title,d.category,d.current_version currentVersion,d.updated_at updatedAt
-                from kb_document d
-                where d.deleted=0 and d.status='PUBLISHED' and """ + " " + visible.sql() + " order by d.id", visible.args());
+        Visibility visible = visibility();
+        return mapper.visibleDocumentIds(visible.userId(), visible.userIdKey(), visible.departmentId(),
+                visible.departmentIds(), visible.roles());
     }
 
     /** 指定时间之后变化的文档元数据（含归档与删除），供增量重建索引。 */
     public List<Map<String, Object>> changedSince(java.time.Instant since) {
-        return jdbc.queryForList("""
-                select cast(id as char) id,status,deleted,current_version currentVersion,updated_at updatedAt
-                from kb_document where updated_at >= ? order by updated_at,id
-                """, java.sql.Timestamp.from(since));
+        return mapper.changedSince(java.sql.Timestamp.from(since));
     }
 
     public Map<String, Object> presignUpload(UploadRequest request) {
@@ -195,13 +130,10 @@ public class KnowledgeService {
         String visibility = request.visibility();
         if ("CUSTOM".equals(visibility)) validateAcl(request.acl());
 
-        jdbc.update("""
-                insert into kb_document(code,title,category,summary,tags,owner_department_id,visibility,status,current_version,
-                    file_id,effective_from,effective_to,created_by,updated_by)
-                values(?,?,?,?,?,?,?,'DRAFT',1,?,?,?,?,?)
-                """, code, request.title().trim(), request.category(), blank(request.summary()), blank(request.tags()),
-                department, visibility, request.fileId(), request.effectiveFrom(), request.effectiveTo(), user.id(), user.id());
-        Long id = jdbc.queryForObject("select id from kb_document where code=?", Long.class, code);
+        mapper.insertDocument(code, request.title().trim(), request.category(), blank(request.summary()),
+                blank(request.tags()), department, visibility, request.fileId(), request.effectiveFrom(),
+                request.effectiveTo(), user.id());
+        Long id = mapper.findIdByCode(code);
         insertVersion(id, 1, request.fileId(), request.changeNote(), user.id());
         replaceAcl(id, visibility, request.acl(), user.id());
         return id;
@@ -217,11 +149,9 @@ public class KnowledgeService {
         String visibility = request.visibility();
         if ("CUSTOM".equals(visibility)) validateAcl(request.acl());
         Long department = request.ownerDepartmentId() == null ? ((Number) row.get("ownerDepartmentId")).longValue() : request.ownerDepartmentId();
-        jdbc.update("""
-                update kb_document set title=?,category=?,summary=?,tags=?,owner_department_id=?,visibility=?,
-                    effective_from=?,effective_to=?,updated_by=? where id=? and deleted=0
-                """, request.title().trim(), request.category(), blank(request.summary()), blank(request.tags()),
-                department, visibility, request.effectiveFrom(), request.effectiveTo(), SecurityUtils.currentUser().id(), id);
+        mapper.updateDocument(id, request.title().trim(), request.category(), blank(request.summary()),
+                blank(request.tags()), department, visibility, request.effectiveFrom(), request.effectiveTo(),
+                SecurityUtils.currentUser().id());
         replaceAcl(id, visibility, request.acl(), SecurityUtils.currentUser().id());
     }
 
@@ -235,7 +165,7 @@ public class KnowledgeService {
         int next = ((Number) row.get("currentVersion")).intValue() + 1;
         Long user = SecurityUtils.currentUser().id();
         insertVersion(id, next, request.fileId(), request.changeNote(), user);
-        jdbc.update("update kb_document set file_id=?,current_version=?,updated_by=? where id=? and deleted=0", request.fileId(), next, user, id);
+        mapper.updateFile(id, request.fileId(), next, user);
         return next;
     }
 
@@ -255,7 +185,7 @@ public class KnowledgeService {
             if (effectiveTo != null && effectiveTo.isBefore(LocalDate.now())) throw conflict("文档已超过有效期，不能发布");
             requireFile(((Number) row.get("fileId")).longValue());
         }
-        jdbc.update("update kb_document set status=?,updated_by=? where id=? and deleted=0", status, SecurityUtils.currentUser().id(), id);
+        mapper.updateStatus(id, status, SecurityUtils.currentUser().id());
     }
 
     @Transactional
@@ -265,60 +195,43 @@ public class KnowledgeService {
         String status = row.get("status").toString();
         if (!List.of("DRAFT", "ARCHIVED").contains(status)) throw conflict("只有草稿或已归档文档可以删除，请先归档");
         Long user = SecurityUtils.currentUser().id();
-        jdbc.update("update kb_document set deleted=1,updated_by=? where id=?", user, id);
-        jdbc.update("delete from kb_document_acl where document_id=?", id);
+        mapper.softDelete(id, user);
+        mapper.deleteAcl(id);
     }
 
     // ==================== 内部实现 ====================
 
     private Map<String, Object> loadReadable(Long id) {
-        Clause visible = visibilityClause();
-        List<Object> args = new ArrayList<>();
-        args.add(id);
-        args.addAll(Arrays.asList(visible.args()));
-        List<Map<String, Object>> rows = jdbc.queryForList("""
-                select cast(d.id as char) id,cast(d.file_id as char) fileId,d.status,d.visibility
-                from kb_document d where d.id=? and d.deleted=0 and """ + " " + visible.sql()
-                + (canManage() ? "" : " and d.status='PUBLISHED'"), args.toArray());
-        if (rows.isEmpty()) throw new BusinessException(HttpStatus.NOT_FOUND, "文档不存在或不在当前可见范围内");
-        return rows.getFirst();
+        Visibility visible = visibility();
+        Map<String, Object> row = mapper.findReadable(id, canManage(), visible.userId(), visible.userIdKey(),
+                visible.departmentId(), visible.departmentIds(), visible.roles());
+        if (row == null) throw new BusinessException(HttpStatus.NOT_FOUND, "文档不存在或不在当前可见范围内");
+        return row;
+    }
+
+    /** 已发布且可见；否则按原文案抛 404。 */
+    private Map<String, Object> findPublished(Long id) {
+        Visibility visible = visibility();
+        Map<String, Object> row = mapper.findPublishedFile(id, visible.userId(), visible.userIdKey(),
+                visible.departmentId(), visible.departmentIds(), visible.roles());
+        if (row == null) throw new BusinessException(HttpStatus.NOT_FOUND, "文档不存在或不在当前可见范围内");
+        return row;
     }
 
     private Map<String, Object> requireDocument(Long id) {
-        List<Map<String, Object>> rows = jdbc.queryForList("""
-                select cast(d.id as char) id,d.status,d.visibility,d.current_version currentVersion,
-                       cast(d.owner_department_id as char) ownerDepartmentId,cast(d.file_id as char) fileId,
-                       d.effective_to effectiveTo
-                from kb_document d where d.id=? and d.deleted=0
-                """, id);
-        if (rows.isEmpty()) throw new BusinessException(HttpStatus.NOT_FOUND, "知识库文档不存在");
-        Map<String, Object> row = rows.getFirst();
+        Map<String, Object> row = mapper.findManagedDocument(id);
+        if (row == null) throw new BusinessException(HttpStatus.NOT_FOUND, "知识库文档不存在");
         row.put("fileId", Long.valueOf(row.get("fileId").toString()));
         row.put("ownerDepartmentId", Long.valueOf(row.get("ownerDepartmentId").toString()));
         row.put("currentVersion", Integer.valueOf(row.get("currentVersion").toString()));
         return row;
     }
 
-    private Clause visibilityClause() {
+    /** 可见范围所需的身份参数：departmentIds 与 roles 交给 XML 的 foreach 绑定。 */
+    private Visibility visibility() {
         CurrentUser user = SecurityUtils.currentUser();
-        List<String> parts = new ArrayList<>();
-        List<Object> args = new ArrayList<>();
-        parts.add("d.visibility='ALL'");
-        parts.add("(d.visibility='SELF' and d.created_by=?)"); args.add(user.id());
-        parts.add("(d.visibility='DEPARTMENT' and d.owner_department_id=?)"); args.add(user.departmentId());
-        List<Long> departments = dataScope.departmentSubtree(user.departmentId());
-        parts.add("(d.visibility='DEPARTMENT_AND_CHILDREN' and d.owner_department_id in (" + placeholders(departments.size()) + "))");
-        args.addAll(departments);
-        StringBuilder acl = new StringBuilder("(d.visibility='CUSTOM' and exists(select 1 from kb_document_acl a where a.document_id=d.id and ((a.subject_type='USER' and a.subject_key=?)");
-        args.add(user.id().toString());
-        List<String> roles = new ArrayList<>(user.roles());
-        if (!roles.isEmpty()) {
-            acl.append(" or (a.subject_type='ROLE' and a.subject_key in (").append(placeholders(roles.size())).append("))");
-            args.addAll(roles);
-        }
-        acl.append(")))");
-        parts.add(acl.toString());
-        return new Clause("(" + String.join(" or ", parts) + ")", args.toArray());
+        return new Visibility(user.id(), user.id().toString(), user.departmentId(),
+                dataScope.departmentSubtree(user.departmentId()), new ArrayList<>(user.roles()));
     }
 
     private void validatePeriod(LocalDate from, LocalDate to) {
@@ -334,26 +247,24 @@ public class KnowledgeService {
                 long id;
                 try { id = Long.parseLong(entry.subjectKey().trim()); }
                 catch (NumberFormatException e) { throw new BusinessException(HttpStatus.BAD_REQUEST, "授权用户标识不合法"); }
-                if (count("select count(*) from sys_user where id=? and deleted=0", id) == 0) throw new BusinessException(HttpStatus.BAD_REQUEST, "授权用户不存在");
-            } else if (count("select count(*) from sys_role where code=? and deleted=0", entry.subjectKey().trim()) == 0) {
+                if (mapper.countUser(id) == 0) throw new BusinessException(HttpStatus.BAD_REQUEST, "授权用户不存在");
+            } else if (mapper.countRole(entry.subjectKey().trim()) == 0) {
                 throw new BusinessException(HttpStatus.BAD_REQUEST, "授权角色不存在");
             }
         }
     }
 
     private void replaceAcl(Long documentId, String visibility, List<AclEntry> acl, Long user) {
-        jdbc.update("delete from kb_document_acl where document_id=?", documentId);
+        mapper.deleteAcl(documentId);
         if (!"CUSTOM".equals(visibility) || acl == null) return;
         for (AclEntry entry : acl) {
-            jdbc.update("insert into kb_document_acl(document_id,subject_type,subject_key,created_by) values(?,?,?,?)",
-                    documentId, entry.subjectType(), entry.subjectKey().trim(), user);
+            mapper.insertAcl(documentId, entry.subjectType(), entry.subjectKey().trim(), user);
         }
     }
 
     private void insertVersion(Long documentId, int version, Long fileId, String note, Long user) {
-        String name = jdbc.queryForObject("select original_name from fs_file_metadata where id=? and deleted=0", String.class, fileId);
-        jdbc.update("insert into kb_document_version(document_id,version,file_id,file_name,change_note,created_by) values(?,?,?,?,?,?)",
-                documentId, version, fileId, name, blank(note), user);
+        String name = mapper.findFileName(fileId);
+        mapper.insertVersion(documentId, version, fileId, name, blank(note), user);
     }
 
     private String generateCode() {
@@ -361,13 +272,13 @@ public class KnowledgeService {
     }
 
     private void requireFile(Long fileId) {
-        if (count("select count(*) from fs_file_metadata where id=? and deleted=0", fileId) == 0) {
+        if (mapper.countFile(fileId) == 0) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "文件不存在，请先完成上传");
         }
     }
 
     private void requireDepartment(Long departmentId) {
-        if (departmentId == null || count("select count(*) from sys_department where id=? and deleted=0", departmentId) == 0) {
+        if (departmentId == null || mapper.countDepartment(departmentId) == 0) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "归属部门不存在");
         }
     }
@@ -381,12 +292,6 @@ public class KnowledgeService {
         return user.roles().contains("ADMIN") || user.permissions().contains("kb:manage");
     }
 
-    private long count(String sql, Object... args) {
-        Long value = jdbc.queryForObject(sql, Long.class, args);
-        return value == null ? 0 : value;
-    }
-
-    private String placeholders(int size) { return String.join(",", java.util.Collections.nCopies(Math.max(size, 1), "?")); }
     private String blank(String value) { return value == null || value.isBlank() ? null : value.trim(); }
     private BusinessException conflict(String message) { return new BusinessException(HttpStatus.CONFLICT, message); }
 
@@ -398,7 +303,8 @@ public class KnowledgeService {
         return LocalDate.parse(value.toString());
     }
 
-    private record Clause(String sql, Object[] args) {}
+    private record Visibility(Long userId, String userIdKey, Long departmentId,
+                              List<Long> departmentIds, List<String> roles) {}
 
     // ==================== 请求模型 ====================
 

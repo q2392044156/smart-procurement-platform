@@ -7,7 +7,9 @@
 ```text
 Controller（HTTP / 参数校验 / 权限注解）
     ↓
-Service（状态机、事务、跨能力编排、SQL）
+Service（状态机、事务、跨能力编排）
+    ↓
+Mapper（接口 + resources/mapper/*.xml，持有全部 SQL）
     ↓
 JdbcTemplate / Flowable / Redis / MinIO（基础设施）
 ```
@@ -15,8 +17,18 @@ JdbcTemplate / Flowable / Redis / MinIO（基础设施）
 分层规则由 `backend/src/test/java/com/procuremind/platform/ArchitectureTest.java` 用 ArchUnit 持续约束：
 
 - Controller 不依赖 `JdbcTemplate`；`LegacyErpController` 是遗留 ERP 兼容面，显式豁免。
+- Service 不依赖 `JdbcTemplate`，SQL 只能出现在 `mapper` 包与 `resources/mapper/` 下的 XML 里。
 - Service、Filter 不反向依赖 Controller。
 - `pojo` 保持独立，不依赖 `controller` / `service` / `filter` / `aop`。
+
+## 数据访问约定
+
+- 每个业务能力一个 `XxxMapper` 接口（`@Mapper`，参数用 `@Param` 命名），对应一份 `backend/src/main/resources/mapper/XxxMapper.xml`；`application.yml` 里 `mybatis.mapper-locations=classpath*:mapper/**/*.xml`。
+- 查询结果一律 `resultType="map"`，列别名就是返回 JSON 的字段名。**MyBatis 不会把 Map 的 key 转驼峰**，所以别名必须与旧 SQL 逐字一致（`display_name displayName` 这类显式别名照写）。
+- 用户输入只走 `<if>` + `#{}`；可变的数据范围片断用 `${scope}`，其值由 `DataScopeService` 的 `SqlFilter.literal()` 生成——实参全是服务端生成的 `Long` 或枚举名，不含请求内容。
+- 可空参数显式写 `jdbcType`（`VARCHAR` / `BIGINT` / `DATE`），避免 null 绑定在部分驱动上报错。
+- `MapperXmlTest` 解析全部 XML 并断言「每个接口方法都有对应 statement」，`MyBatisWiringTest` 用 `ApplicationContextRunner` 断言 mapper bean 能注册；两者都不连数据库。
+- 已知缺口：`PlatformIntegrationTest`（Testcontainers）是唯一会真正执行这些 SQL 的测试，需要 Docker 才能跑。
 
 同一层内**不再按业务分包**：控制器在 `controller` 下平铺，服务在 `service` 下平铺，业务归属由类名表达（`RequisitionService`、`PurchaseOrderService`…）。跨业务调用只走对方 Service 的公开方法，不直接访问其 SQL。
 

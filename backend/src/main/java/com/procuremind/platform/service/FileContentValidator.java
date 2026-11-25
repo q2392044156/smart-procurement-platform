@@ -1,10 +1,10 @@
 package com.procuremind.platform.service;
 
 import com.procuremind.platform.exception.BusinessException;
+import com.procuremind.platform.mapper.FileMapper;
 import io.minio.GetObjectArgs;
 import io.minio.MinioClient;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import java.io.InputStream;
@@ -21,16 +21,16 @@ public class FileContentValidator {
     private static final int HEAD_BYTES = 16;
 
     private final MinioClient minio;
-    private final JdbcTemplate jdbc;
+    private final FileMapper mapper;
 
-    public FileContentValidator(MinioClient minio, JdbcTemplate jdbc) {
+    public FileContentValidator(MinioClient minio, FileMapper mapper) {
         this.minio = minio;
-        this.jdbc = jdbc;
+        this.mapper = mapper;
     }
 
     public void verify(Long fileId) {
-        Map<String, Object> file = jdbc.queryForMap(
-                "select object_key,content_type,bucket,size_bytes from fs_file_metadata where id=? and deleted=0", fileId);
+        Map<String, Object> file = mapper.findForValidation(fileId);
+        if (file == null) throw new BusinessException(HttpStatus.BAD_REQUEST, "文件不存在");
         String contentType = String.valueOf(file.get("content_type"));
         byte[] head = readHead(file);
         if (!matches(contentType, head)) {

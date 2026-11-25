@@ -1,0 +1,387 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.procuremind.platform.mapper.MasterDataMapper">
+
+    <!-- 分类：详情与列表共用同一段投影，避免详情接口另写一份 select 造成列漂移。 -->
+    <sql id="categoryColumns">
+        cast(c.id as char) id, cast(c.parent_id as char) parentId, c.code, c.name, c.description,
+        c.sort_order sortOrder,
+        (select count(*) from md_material m where m.category_id=c.id and m.deleted=0) materialCount
+    </sql>
+
+    <select id="listCategories" resultType="map">
+        select <include refid="categoryColumns"/>
+        from md_material_category c
+        where c.deleted=0
+        order by c.sort_order, c.id
+    </select>
+
+    <select id="findCategory" resultType="map">
+        select <include refid="categoryColumns"/>
+        from md_material_category c
+        where c.deleted=0 and c.id=#{id}
+    </select>
+
+    <insert id="insertCategory">
+        insert into md_material_category(parent_id, code, name, description, sort_order, created_by, updated_by)
+        values (#{parentId,jdbcType=BIGINT}, #{code}, #{name}, #{description,jdbcType=VARCHAR},
+                #{sortOrder}, #{userId}, #{userId})
+    </insert>
+
+    <select id="findCategoryIdByCode" resultType="long">
+        select id from md_material_category where code=#{code}
+    </select>
+
+    <update id="updateCategory">
+        update md_material_category
+        set parent_id=#{parentId,jdbcType=BIGINT}, code=#{code}, name=#{name},
+            description=#{description,jdbcType=VARCHAR}, sort_order=#{sortOrder}, updated_by=#{userId}
+        where id=#{id} and deleted=0
+    </update>
+
+    <select id="countCategoryChildren" resultType="int">
+        select count(*) from md_material_category where parent_id=#{id} and deleted=0
+    </select>
+
+    <select id="countCategoryById" resultType="int">
+        select count(*) from md_material_category where id=#{id} and deleted=0
+    </select>
+
+    <!-- parent_id 可为 null，null 即到达顶层，循环检测据此终止。 -->
+    <select id="findParentId" resultType="long">
+        select parent_id from md_material_category where id=#{id} and deleted=0
+    </select>
+
+    <delete id="deleteCategoryAttributes">
+        delete from md_category_attribute where category_id=#{categoryId}
+    </delete>
+
+    <update id="softDeleteCategory">
+        update md_material_category set deleted=1, updated_by=#{userId} where id=#{id}
+    </update>
+
+    <!-- 动态属性：列表、校验、保存共用同一套列标签，服务里 row.get 的 key 依赖这里的别名。 -->
+    <select id="listCategoryAttributes" resultType="map">
+        select cast(id as char) id, code, name, value_type valueType, required, options_json options,
+               sort_order sortOrder
+        from md_category_attribute
+        where category_id=#{categoryId}
+        order by sort_order, id
+    </select>
+
+    <insert id="insertCategoryAttribute">
+        insert into md_category_attribute(category_id, code, name, value_type, required, options_json, sort_order)
+        values (#{categoryId}, #{code}, #{name}, #{valueType}, #{required},
+                #{optionsJson,jdbcType=VARCHAR}, #{sortOrder})
+    </insert>
+
+    <select id="listMaterialAttributeValues" resultType="map">
+        select code, attributes_json attributes from md_material where category_id=#{categoryId} and deleted=0
+    </select>
+
+    <!-- 物资投影：品牌是 left join，品牌为空时 brandId/brand 同样留在结果里。 -->
+    <sql id="materialColumns">
+        cast(m.id as char) id, m.code, m.name, cast(m.category_id as char) categoryId, c.name category,
+        cast(m.unit_id as char) unitId, u.name unit, cast(m.brand_id as char) brandId, b.name brand,
+        m.specification, m.tracking_mode trackingMode, m.min_stock minStock,
+        m.attributes_json attributes, m.enabled
+    </sql>
+
+    <sql id="materialFrom">
+        from md_material m
+        join md_material_category c on c.id=m.category_id
+        join md_unit u on u.id=m.unit_id
+        left join md_brand b on b.id=m.brand_id
+    </sql>
+
+    <!-- 物资模糊检索：编码/名称/品牌/规格/分类；品牌、规格、追踪方式可单独过滤。空白条件由服务层归一为 null。 -->
+    <sql id="materialWhere">
+        m.deleted=0
+        <if test="keyword != null and keyword != ''">
+            and (m.code like concat('%', #{keyword}, '%') or m.name like concat('%', #{keyword}, '%')
+            or b.name like concat('%', #{keyword}, '%') or m.specification like concat('%', #{keyword}, '%')
+            or c.name like concat('%', #{keyword}, '%'))
+        </if>
+        <if test="brand != null and brand != ''">
+            and b.name like concat('%', #{brand}, '%')
+        </if>
+        <if test="category != null and category != ''">
+            and c.name like concat('%', #{category}, '%')
+        </if>
+        <if test="specification != null and specification != ''">
+            and m.specification like concat('%', #{specification}, '%')
+        </if>
+        <if test="trackingMode != null and trackingMode != ''">
+            and m.tracking_mode = #{trackingMode}
+        </if>
+    </sql>
+
+    <select id="listMaterials" resultType="map">
+        select <include refid="materialColumns"/>
+        <include refid="materialFrom"/>
+        where <include refid="materialWhere"/>
+        order by m.id desc
+    </select>
+
+    <!-- 计数口径沿用原实现：不 join md_unit。 -->
+    <select id="countMaterialsPage" resultType="long">
+        select count(*)
+        from md_material m
+        join md_material_category c on c.id=m.category_id
+        left join md_brand b on b.id=m.brand_id
+        where <include refid="materialWhere"/>
+    </select>
+
+    <select id="pageMaterials" resultType="map">
+        select <include refid="materialColumns"/>
+        <include refid="materialFrom"/>
+        where <include refid="materialWhere"/>
+        order by m.id desc limit #{size} offset #{offset}
+    </select>
+
+    <select id="findMaterial" resultType="map">
+        select <include refid="materialColumns"/>
+        <include refid="materialFrom"/>
+        where m.deleted=0 and m.id=#{id}
+    </select>
+
+    <insert id="insertMaterial">
+        insert into md_material(code, name, category_id, unit_id, brand_id, specification, tracking_mode,
+                                min_stock, attributes_json, created_by, updated_by)
+        values (#{code}, #{name}, #{categoryId}, #{unitId}, #{brandId,jdbcType=BIGINT},
+                #{specification,jdbcType=VARCHAR}, #{trackingMode}, #{minStock},
+                #{attributesJson,jdbcType=VARCHAR}, #{userId}, #{userId})
+    </insert>
+
+    <select id="findMaterialIdByCode" resultType="long">
+        select id from md_material where code=#{code}
+    </select>
+
+    <update id="updateMaterial">
+        update md_material
+        set name=#{name}, category_id=#{categoryId}, unit_id=#{unitId}, brand_id=#{brandId,jdbcType=BIGINT},
+            specification=#{specification,jdbcType=VARCHAR}, tracking_mode=#{trackingMode},
+            min_stock=#{minStock}, attributes_json=#{attributesJson,jdbcType=VARCHAR}, updated_by=#{userId}
+        where id=#{id} and deleted=0
+    </update>
+
+    <update id="updateMaterialStatus">
+        update md_material set enabled=#{enabled}, updated_by=#{userId} where id=#{id} and deleted=0
+    </update>
+
+    <select id="countRequisitionItemByMaterial" resultType="int">
+        select count(*) from pr_requisition_item where material_id=#{materialId} and deleted=0
+    </select>
+
+    <select id="countPurchaseOrderItemByMaterial" resultType="int">
+        select count(*) from po_purchase_order_item where material_id=#{materialId} and deleted=0
+    </select>
+
+    <select id="countReceiptItemByMaterial" resultType="int">
+        select count(*) from inv_receipt_item where material_id=#{materialId} and deleted=0
+    </select>
+
+    <select id="countBalanceByMaterial" resultType="int">
+        select count(*) from inv_balance where material_id=#{materialId} and deleted=0
+    </select>
+
+    <select id="countLedgerByMaterial" resultType="int">
+        select count(*) from inv_ledger where material_id=#{materialId}
+    </select>
+
+    <select id="countMaterialById" resultType="int">
+        select count(*) from md_material where id=#{id} and deleted=0
+    </select>
+
+    <update id="softDeleteMaterial">
+        update md_material set enabled=0, deleted=1, updated_by=#{userId} where id=#{id}
+    </update>
+
+    <select id="countMaterialByCategory" resultType="int">
+        select count(*) from md_material where category_id=#{categoryId} and deleted=0
+    </select>
+
+    <!-- 仓库投影：库存数、收货数两个既有口径。 -->
+    <sql id="warehouseColumns">
+        cast(w.id as char) id, w.code, w.name, w.address, w.manager, w.enabled,
+        (select count(*) from inv_balance b where b.warehouse_id=w.id and b.deleted=0) balanceCount,
+        (select count(*) from inv_receipt r where r.warehouse_id=w.id and r.deleted=0) receiptCount
+    </sql>
+
+    <select id="listWarehouses" resultType="map">
+        select <include refid="warehouseColumns"/>
+        from md_warehouse w
+        where w.deleted=0
+        order by w.id
+    </select>
+
+    <select id="findWarehouse" resultType="map">
+        select <include refid="warehouseColumns"/>
+        from md_warehouse w
+        where w.deleted=0 and w.id=#{id}
+    </select>
+
+    <insert id="insertWarehouse">
+        insert into md_warehouse(code, name, address, manager, enabled, created_by, updated_by)
+        values (#{code}, #{name}, #{address,jdbcType=VARCHAR}, #{manager,jdbcType=VARCHAR}, 1, #{userId}, #{userId})
+    </insert>
+
+    <select id="findWarehouseIdByCode" resultType="long">
+        select id from md_warehouse where code=#{code}
+    </select>
+
+    <update id="updateWarehouse">
+        update md_warehouse
+        set code=#{code}, name=#{name}, address=#{address,jdbcType=VARCHAR}, manager=#{manager,jdbcType=VARCHAR},
+            updated_by=#{userId}
+        where id=#{id} and deleted=0
+    </update>
+
+    <update id="updateWarehouseStatus">
+        update md_warehouse set enabled=#{enabled}, updated_by=#{userId} where id=#{id} and deleted=0
+    </update>
+
+    <select id="countWarehouseById" resultType="int">
+        select count(*) from md_warehouse where id=#{id} and deleted=0
+        <if test="enabled"> and enabled=1 </if>
+    </select>
+
+    <select id="countBalanceWithStock" resultType="int">
+        select count(*) from inv_balance where warehouse_id=#{warehouseId} and deleted=0 and quantity&lt;&gt;0
+    </select>
+
+    <select id="countReceiptByWarehouse" resultType="int">
+        select count(*) from inv_receipt where warehouse_id=#{warehouseId} and deleted=0
+    </select>
+
+    <select id="countBalanceByWarehouse" resultType="int">
+        select count(*) from inv_balance where warehouse_id=#{warehouseId} and deleted=0
+    </select>
+
+    <select id="countLedgerByWarehouse" resultType="int">
+        select count(*) from inv_ledger where warehouse_id=#{warehouseId}
+    </select>
+
+    <select id="countBatchByWarehouse" resultType="int">
+        select count(*) from inv_batch where warehouse_id=#{warehouseId}
+    </select>
+
+    <select id="countSerialByWarehouse" resultType="int">
+        select count(*) from inv_serial where warehouse_id=#{warehouseId}
+    </select>
+
+    <update id="softDeleteWarehouse">
+        update md_warehouse set enabled=0, deleted=1, updated_by=#{userId} where id=#{id}
+    </update>
+
+    <!-- 计量单位投影：物资数一个既有口径。 -->
+    <sql id="unitColumns">
+        cast(u.id as char) id, u.code, u.name, u.precision_scale precisionScale, u.enabled,
+        (select count(*) from md_material m where m.unit_id=u.id and m.deleted=0) materialCount
+    </sql>
+
+    <select id="listUnits" resultType="map">
+        select <include refid="unitColumns"/>
+        from md_unit u
+        where u.deleted=0
+        order by u.id
+    </select>
+
+    <select id="findUnit" resultType="map">
+        select <include refid="unitColumns"/>
+        from md_unit u
+        where u.deleted=0 and u.id=#{id}
+    </select>
+
+    <insert id="insertUnit">
+        insert into md_unit(code, name, precision_scale, enabled, created_by, updated_by)
+        values (#{code}, #{name}, #{precisionScale}, 1, #{userId}, #{userId})
+    </insert>
+
+    <select id="findUnitIdByCode" resultType="long">
+        select id from md_unit where code=#{code}
+    </select>
+
+    <update id="updateUnit">
+        update md_unit
+        set code=#{code}, name=#{name}, precision_scale=#{precisionScale}, updated_by=#{userId}
+        where id=#{id} and deleted=0
+    </update>
+
+    <update id="updateUnitStatus">
+        update md_unit set enabled=#{enabled}, updated_by=#{userId} where id=#{id} and deleted=0
+    </update>
+
+    <select id="countUnitById" resultType="int">
+        select count(*) from md_unit where id=#{id} and deleted=0
+        <if test="enabled"> and enabled=1 </if>
+    </select>
+
+    <select id="countUnitUsedInPurchaseOrders" resultType="int">
+        select count(*) from md_material m
+        join po_purchase_order_item i on i.material_id=m.id and i.deleted=0
+        where m.unit_id=#{id} and m.deleted=0
+    </select>
+
+    <select id="findUnitPrecisionScale" resultType="java.lang.Integer">
+        select precision_scale from md_unit where id=#{id}
+    </select>
+
+    <select id="countMaterialByUnit" resultType="int">
+        select count(*) from md_material where unit_id=#{unitId} and deleted=0
+    </select>
+
+    <update id="softDeleteUnit">
+        update md_unit set enabled=0, deleted=1, updated_by=#{userId} where id=#{id}
+    </update>
+
+    <!-- 品牌投影：物资数一个既有口径。 -->
+    <sql id="brandColumns">
+        cast(b.id as char) id, b.code, b.name, b.enabled,
+        (select count(*) from md_material m where m.brand_id=b.id and m.deleted=0) materialCount
+    </sql>
+
+    <select id="listBrands" resultType="map">
+        select <include refid="brandColumns"/>
+        from md_brand b
+        where b.deleted=0
+        order by b.id
+    </select>
+
+    <select id="findBrand" resultType="map">
+        select <include refid="brandColumns"/>
+        from md_brand b
+        where b.deleted=0 and b.id=#{id}
+    </select>
+
+    <insert id="insertBrand">
+        insert into md_brand(code, name, enabled, created_by, updated_by)
+        values (#{code}, #{name}, 1, #{userId}, #{userId})
+    </insert>
+
+    <select id="findBrandIdByCode" resultType="long">
+        select id from md_brand where code=#{code}
+    </select>
+
+    <update id="updateBrand">
+        update md_brand set code=#{code}, name=#{name}, updated_by=#{userId} where id=#{id} and deleted=0
+    </update>
+
+    <update id="updateBrandStatus">
+        update md_brand set enabled=#{enabled}, updated_by=#{userId} where id=#{id} and deleted=0
+    </update>
+
+    <select id="countBrandById" resultType="int">
+        select count(*) from md_brand where id=#{id} and deleted=0
+        <if test="enabled"> and enabled=1 </if>
+    </select>
+
+    <select id="countMaterialByBrand" resultType="int">
+        select count(*) from md_material where brand_id=#{brandId} and deleted=0
+    </select>
+
+    <update id="softDeleteBrand">
+        update md_brand set enabled=0, deleted=1, updated_by=#{userId} where id=#{id}
+    </update>
+
+</mapper>

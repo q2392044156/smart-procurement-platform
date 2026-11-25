@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.procuremind.platform.mapper.SystemMapper">
+
+    <sql id="userColumns">
+        select cast(u.id as char) id,u.username,u.display_name displayName,
+               cast(u.department_id as char) departmentId,d.name department,u.enabled
+        from sys_user u join sys_department d on d.id=u.department_id
+    </sql>
+
+    <select id="listUsers" resultType="map">
+        <include refid="userColumns"/>
+        where u.deleted=0 order by u.id
+    </select>
+
+    <select id="findUser" resultType="map">
+        <include refid="userColumns"/>
+        where u.deleted=0 and u.id=#{id}
+    </select>
+
+    <select id="roleIdsOf" resultType="string">
+        select cast(r.id as char) from sys_role r join sys_user_role ur on ur.role_id=r.id
+        where ur.user_id=#{userId} and r.deleted=0 order by r.id
+    </select>
+
+    <select id="roleNamesOf" resultType="string">
+        select r.name from sys_role r join sys_user_role ur on ur.role_id=r.id
+        where ur.user_id=#{userId} and r.deleted=0 order by r.id
+    </select>
+
+    <select id="countUser" resultType="int">
+        select count(*) from sys_user where id=#{id} and deleted=0
+    </select>
+
+    <insert id="insertUser">
+        insert into sys_user(username,password_hash,display_name,department_id,enabled,created_by,updated_by)
+        values(#{username},#{passwordHash},#{displayName},#{departmentId},1,#{operator},#{operator})
+    </insert>
+
+    <select id="findUserIdByUsername" resultType="long">
+        select id from sys_user where username=#{username}
+    </select>
+
+    <update id="updateUser">
+        update sys_user set display_name=#{displayName},department_id=#{departmentId},updated_by=#{operator}
+        where id=#{id} and deleted=0
+    </update>
+
+    <update id="updateUserStatus">
+        update sys_user set enabled=#{enabled},updated_by=#{operator} where id=#{id} and deleted=0
+    </update>
+
+    <update id="updatePassword">
+        update sys_user set password_hash=#{passwordHash},updated_by=#{operator} where id=#{id} and deleted=0
+    </update>
+
+    <update id="softDeleteUser">
+        update sys_user set enabled=0,deleted=1,updated_by=#{operator} where id=#{id}
+    </update>
+
+    <delete id="deleteUserRoles">
+        delete from sys_user_role where user_id=#{userId}
+    </delete>
+
+    <insert id="insertUserRole">
+        insert into sys_user_role(user_id,role_id) values(#{userId},#{roleId})
+    </insert>
+
+    <select id="countEnabledRole" resultType="int">
+        select count(*) from sys_role where id=#{id} and deleted=0 and enabled=1
+    </select>
+
+    <select id="countAdminRoleOf" resultType="int">
+        select count(*) from sys_user_role ur join sys_role r on r.id=ur.role_id
+        where ur.user_id=#{userId} and r.code='ADMIN' and r.deleted=0
+    </select>
+
+    <select id="countActiveAdmins" resultType="int">
+        select count(distinct u.id) from sys_user u
+        join sys_user_role ur on ur.user_id=u.id join sys_role r on r.id=ur.role_id
+        where u.deleted=0 and u.enabled=1 and r.code='ADMIN' and r.deleted=0 and r.enabled=1
+    </select>
+
+    <select id="findAdminRoleId" resultType="long">
+        select id from sys_role where code='ADMIN' and deleted=0
+    </select>
+
+    <select id="listDepartments" resultType="map">
+        select cast(d.id as char) id,cast(d.parent_id as char) parentId,d.code,d.name,d.sort_order sortOrder,d.enabled,
+               (select count(*) from sys_user u where u.department_id=d.id and u.deleted=0) userCount
+        from sys_department d where d.deleted=0 order by d.sort_order,d.id
+    </select>
+
+    <select id="countDepartment" resultType="int">
+        select count(*) from sys_department where id=#{id} and deleted=0
+    </select>
+
+    <select id="countEnabledDepartment" resultType="int">
+        select count(*) from sys_department where id=#{id} and deleted=0 and enabled=1
+    </select>
+
+    <insert id="insertDepartment">
+        insert into sys_department(parent_id,code,name,sort_order,enabled,created_by,updated_by)
+        values(#{parentId,jdbcType=BIGINT},#{code},#{name},#{sortOrder},1,#{operator},#{operator})
+    </insert>
+
+    <select id="findDepartmentIdByCode" resultType="long">
+        select id from sys_department where code=#{code}
+    </select>
+
+    <update id="updateDepartment">
+        update sys_department set parent_id=#{parentId,jdbcType=BIGINT},code=#{code},name=#{name},
+               sort_order=#{sortOrder},updated_by=#{operator}
+        where id=#{id} and deleted=0
+    </update>
+
+    <update id="updateDepartmentStatus">
+        update sys_department set enabled=#{enabled},updated_by=#{operator} where id=#{id} and deleted=0
+    </update>
+
+    <update id="softDeleteDepartment">
+        update sys_department set enabled=0,deleted=1,updated_by=#{operator} where id=#{id}
+    </update>
+
+    <select id="findDepartmentParent" resultType="long">
+        select parent_id from sys_department where id=#{id} and deleted=0
+    </select>
+
+    <select id="countEnabledChildren" resultType="int">
+        select count(*) from sys_department where parent_id=#{parentId} and deleted=0 and enabled=1
+    </select>
+
+    <select id="countChildren" resultType="int">
+        select count(*) from sys_department where parent_id=#{parentId} and deleted=0
+    </select>
+
+    <select id="countEnabledUsersIn" resultType="int">
+        select count(*) from sys_user where department_id=#{departmentId} and deleted=0 and enabled=1
+    </select>
+
+    <select id="countUsersIn" resultType="int">
+        select count(*) from sys_user where department_id=#{departmentId} and deleted=0
+    </select>
+
+    <select id="countRequisitionsIn" resultType="int">
+        select count(*) from pr_requisition where department_id=#{departmentId} and deleted=0
+    </select>
+
+    <select id="listRoles" resultType="map">
+        select cast(r.id as char) id,r.code,r.name,r.data_scope dataScope,r.enabled,r.built_in builtIn,
+               (select count(*) from sys_user_role ur join sys_user u on u.id=ur.user_id and u.deleted=0 where ur.role_id=r.id) userCount
+        from sys_role r where r.deleted=0 order by r.id
+    </select>
+
+    <select id="rolePermissionIds" resultType="string">
+        select cast(permission_id as char) from sys_role_permission where role_id=#{roleId} order by permission_id
+    </select>
+
+    <select id="findRole" resultType="map">
+        select code,built_in builtIn from sys_role where id=#{id} and deleted=0
+    </select>
+
+    <insert id="insertRole">
+        insert into sys_role(code,name,data_scope,enabled,built_in,created_by,updated_by)
+        values(#{code},#{name},#{dataScope},1,0,#{operator},#{operator})
+    </insert>
+
+    <select id="findRoleIdByCode" resultType="long">
+        select id from sys_role where code=#{code}
+    </select>
+
+    <update id="updateRole">
+        update sys_role set name=#{name},data_scope=#{dataScope},updated_by=#{operator} where id=#{id} and deleted=0
+    </update>
+
+    <update id="updateRoleStatus">
+        update sys_role set enabled=#{enabled},updated_by=#{operator} where id=#{id} and deleted=0
+    </update>
+
+    <update id="softDeleteRole">
+        update sys_role set enabled=0,deleted=1,updated_by=#{operator} where id=#{id}
+    </update>
+
+    <select id="countUsersOfRole" resultType="int">
+        select count(*) from sys_user_role where role_id=#{roleId}
+    </select>
+
+    <select id="listPermissions" resultType="map">
+        select cast(id as char) id,code,name,type,parent_code parentCode,sort_order sortOrder
+        from sys_permission order by sort_order,id
+    </select>
+
+    <select id="countPermission" resultType="int">
+        select count(*) from sys_permission where id=#{id}
+    </select>
+
+    <select id="permissionParentIds" resultType="long">
+        select parent.id from sys_permission child
+        join sys_permission parent on parent.code=child.parent_code
+        where child.id=#{id}
+    </select>
+
+    <delete id="deleteRolePermissions">
+        delete from sys_role_permission where role_id=#{roleId}
+    </delete>
+
+    <insert id="insertRolePermission">
+        insert into sys_role_permission(role_id,permission_id) values(#{roleId},#{permissionId})
+    </insert>
+
+</mapper>

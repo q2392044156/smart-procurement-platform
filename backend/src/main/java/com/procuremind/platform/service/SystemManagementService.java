@@ -1,8 +1,8 @@
 package com.procuremind.platform.service;
 
-import com.procuremind.platform.utils.SecurityUtils;
-
 import com.procuremind.platform.exception.BusinessException;
+import com.procuremind.platform.mapper.SystemMapper;
+import com.procuremind.platform.utils.SecurityUtils;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -10,15 +10,12 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -26,38 +23,33 @@ import java.util.Set;
 @Service
 public class SystemManagementService {
     private static final Set<String> DATA_SCOPES = Set.of("ALL", "DEPARTMENT", "DEPARTMENT_AND_CHILDREN", "SELF");
-    private final JdbcTemplate jdbc;
+    private final SystemMapper mapper;
     private final PasswordEncoder passwordEncoder;
     private final AuthService authService;
 
-    public SystemManagementService(JdbcTemplate jdbc, PasswordEncoder passwordEncoder, AuthService authService) {
-        this.jdbc = jdbc;
+    public SystemManagementService(SystemMapper mapper, PasswordEncoder passwordEncoder, AuthService authService) {
+        this.mapper = mapper;
         this.passwordEncoder = passwordEncoder;
         this.authService = authService;
     }
 
-    private static final String USER_SELECT = """
-            select cast(u.id as char) id,u.username,u.display_name displayName,
-                   cast(u.department_id as char) departmentId,d.name department,u.enabled
-            from sys_user u join sys_department d on d.id=u.department_id""";
-
     public List<Map<String, Object>> users() {
-        List<Map<String, Object>> rows = jdbc.queryForList(USER_SELECT + " where u.deleted=0 order by u.id");
+        List<Map<String, Object>> rows = mapper.listUsers();
         rows.forEach(this::attachRoles);
         return rows;
     }
 
     public Map<String, Object> user(Long id) {
-        Map<String, Object> row = jdbc.queryForList(USER_SELECT + " where u.deleted=0 and u.id=?", id).stream().findFirst()
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "用户不存在"));
+        Map<String, Object> row = mapper.findUser(id);
+        if (row == null) throw notFound("用户不存在");
         attachRoles(row);
         return row;
     }
 
     private void attachRoles(Map<String, Object> row) {
         Long id = Long.valueOf(row.get("id").toString());
-        row.put("roleIds", jdbc.queryForList("select cast(r.id as char) from sys_role r join sys_user_role ur on ur.role_id=r.id where ur.user_id=? and r.deleted=0 order by r.id", String.class, id));
-        row.put("roles", jdbc.queryForList("select r.name from sys_role r join sys_user_role ur on ur.role_id=r.id where ur.user_id=? and r.deleted=0 order by r.id", String.class, id));
+        row.put("roleIds", mapper.roleIdsOf(id));
+        row.put("roles", mapper.roleNamesOf(id));
     }
 
     @Transactional
@@ -66,9 +58,9 @@ public class SystemManagementService {
         requireRoles(request.roleIds());
         validatePassword(request.password());
         Long operator = SecurityUtils.currentUser().id();
-        jdbc.update("insert into sys_user(username,password_hash,display_name,department_id,enabled,created_by,updated_by) values(?,?,?,?,1,?,?)",
-                request.username(), passwordEncoder.encode(request.password()), request.displayName(), request.departmentId(), operator, operator);
-        Long id = jdbc.queryForObject("select id from sys_user where username=?", Long.class, request.username());
+        mapper.insertUser(request.username(), passwordEncoder.encode(request.password()), request.displayName(),
+                request.departmentId(), operator);
+        Long id = mapper.findUserIdByUsername(request.username());
         replaceUserRoles(id, request.roleIds());
         return id;
     }
@@ -79,8 +71,7 @@ public class SystemManagementService {
         requireDepartment(request.departmentId(), true);
         requireRoles(request.roleIds());
         protectLastAdminRole(id, request.roleIds().contains(adminRoleId()));
-        jdbc.update("update sys_user set display_name=?,department_id=?,updated_by=? where id=? and deleted=0",
-                request.displayName(), request.departmentId(), SecurityUtils.currentUser().id(), id);
+        mapper.updateUser(id, request.displayName(), request.departmentId(), SecurityUtils.currentUser().id());
         replaceUserRoles(id, request.roleIds());
         authService.revokeUserSessions(id);
     }
@@ -90,15 +81,14 @@ public class SystemManagementService {
         requireUser(id);
         if (!enabled && id.equals(SecurityUtils.currentUser().id())) throw conflict("不能停用当前登录账号");
         if (!enabled) protectLastAdminRole(id, false);
-        jdbc.update("update sys_user set enabled=?,updated_by=? where id=? and deleted=0", enabled, SecurityUtils.currentUser().id(), id);
+        mapper.updateUserStatus(id, enabled, SecurityUtils.currentUser().id());
         if (!enabled) authService.revokeUserSessions(id);
     }
 
     public void resetPassword(Long id, String password) {
         requireUser(id);
         validatePassword(password);
-        jdbc.update("update sys_user set password_hash=?,updated_by=? where id=? and deleted=0",
-                passwordEncoder.encode(password), SecurityUtils.currentUser().id(), id);
+        mapper.updatePassword(id, passwordEncoder.encode(password), SecurityUtils.currentUser().id());
         authService.revokeUserSessions(id);
     }
 
@@ -107,26 +97,22 @@ public class SystemManagementService {
         requireUser(id);
         if (id.equals(SecurityUtils.currentUser().id())) throw conflict("不能删除当前登录账号");
         protectLastAdminRole(id, false);
-        jdbc.update("update sys_user set enabled=0,deleted=1,updated_by=? where id=?", SecurityUtils.currentUser().id(), id);
-        jdbc.update("delete from sys_user_role where user_id=?", id);
+        mapper.softDeleteUser(id, SecurityUtils.currentUser().id());
+        mapper.deleteUserRoles(id);
         authService.revokeUserSessions(id);
     }
 
     public List<Map<String, Object>> departments() {
-        return jdbc.queryForList("""
-                select cast(d.id as char) id,cast(d.parent_id as char) parentId,d.code,d.name,d.sort_order sortOrder,d.enabled,
-                       (select count(*) from sys_user u where u.department_id=d.id and u.deleted=0) userCount
-                from sys_department d where d.deleted=0 order by d.sort_order,d.id
-                """);
+        return mapper.listDepartments();
     }
 
     @Transactional
     public Long createDepartment(DepartmentRequest request) {
         if (request.parentId() != null) requireDepartment(request.parentId(), true);
         Long operator = SecurityUtils.currentUser().id();
-        jdbc.update("insert into sys_department(parent_id,code,name,sort_order,enabled,created_by,updated_by) values(?,?,?,?,1,?,?)",
-                request.parentId(), request.code(), request.name(), request.sortOrder() == null ? 0 : request.sortOrder(), operator, operator);
-        return jdbc.queryForObject("select id from sys_department where code=?", Long.class, request.code());
+        mapper.insertDepartment(request.parentId(), request.code(), request.name(),
+                request.sortOrder() == null ? 0 : request.sortOrder(), operator);
+        return mapper.findDepartmentIdByCode(request.code());
     }
 
     @Transactional
@@ -136,42 +122,36 @@ public class SystemManagementService {
             requireDepartment(request.parentId(), true);
             ensureNoDepartmentCycle(id, request.parentId());
         }
-        jdbc.update("update sys_department set parent_id=?,code=?,name=?,sort_order=?,updated_by=? where id=? and deleted=0",
-                request.parentId(), request.code(), request.name(), request.sortOrder() == null ? 0 : request.sortOrder(), SecurityUtils.currentUser().id(), id);
+        mapper.updateDepartment(id, request.parentId(), request.code(), request.name(),
+                request.sortOrder() == null ? 0 : request.sortOrder(), SecurityUtils.currentUser().id());
     }
 
     public void setDepartmentStatus(Long id, boolean enabled) {
         requireDepartment(id, false);
         if (!enabled) {
-            if (count("select count(*) from sys_department where parent_id=? and deleted=0 and enabled=1", id) > 0) throw conflict("请先停用下级部门");
-            if (count("select count(*) from sys_user where department_id=? and deleted=0 and enabled=1", id) > 0) throw conflict("部门仍有启用用户，不能停用");
+            if (mapper.countEnabledChildren(id) > 0) throw conflict("请先停用下级部门");
+            if (mapper.countEnabledUsersIn(id) > 0) throw conflict("部门仍有启用用户，不能停用");
         }
-        jdbc.update("update sys_department set enabled=?,updated_by=? where id=? and deleted=0", enabled, SecurityUtils.currentUser().id(), id);
+        mapper.updateDepartmentStatus(id, enabled, SecurityUtils.currentUser().id());
     }
 
     @Transactional
     public void deleteDepartment(Long id) {
         requireDepartment(id, false);
-        if (count("select count(*) from sys_department where parent_id=? and deleted=0", id) > 0) throw conflict("部门存在下级部门，不能删除");
-        if (count("select count(*) from sys_user where department_id=? and deleted=0", id) > 0) throw conflict("部门已关联用户，不能删除");
-        if (count("select count(*) from pr_requisition where department_id=? and deleted=0", id) > 0) throw conflict("部门已关联采购申请，不能删除");
-        jdbc.update("update sys_department set enabled=0,deleted=1,updated_by=? where id=?", SecurityUtils.currentUser().id(), id);
+        if (mapper.countChildren(id) > 0) throw conflict("部门存在下级部门，不能删除");
+        if (mapper.countUsersIn(id) > 0) throw conflict("部门已关联用户，不能删除");
+        if (mapper.countRequisitionsIn(id) > 0) throw conflict("部门已关联采购申请，不能删除");
+        mapper.softDeleteDepartment(id, SecurityUtils.currentUser().id());
     }
 
     public List<Map<String, Object>> roles() {
-        List<Map<String, Object>> rows = jdbc.queryForList("""
-                select cast(r.id as char) id,r.code,r.name,r.data_scope dataScope,r.enabled,r.built_in builtIn,
-                       (select count(*) from sys_user_role ur join sys_user u on u.id=ur.user_id and u.deleted=0 where ur.role_id=r.id) userCount
-                from sys_role r where r.deleted=0 order by r.id
-                """);
-        rows.forEach(row -> row.put("permissionIds", jdbc.queryForList(
-                "select cast(permission_id as char) from sys_role_permission where role_id=? order by permission_id",
-                String.class, Long.valueOf(row.get("id").toString()))));
+        List<Map<String, Object>> rows = mapper.listRoles();
+        rows.forEach(row -> row.put("permissionIds", mapper.rolePermissionIds(Long.valueOf(row.get("id").toString()))));
         return rows;
     }
 
     public List<Map<String, Object>> permissions() {
-        return jdbc.queryForList("select cast(id as char) id,code,name,type,parent_code parentCode,sort_order sortOrder from sys_permission order by sort_order,id");
+        return mapper.listPermissions();
     }
 
     @Transactional
@@ -179,9 +159,8 @@ public class SystemManagementService {
         validateDataScope(request.dataScope());
         requirePermissions(request.permissionIds());
         Long operator = SecurityUtils.currentUser().id();
-        jdbc.update("insert into sys_role(code,name,data_scope,enabled,built_in,created_by,updated_by) values(?,?,?,1,0,?,?)",
-                request.code(), request.name(), request.dataScope(), operator, operator);
-        Long id = jdbc.queryForObject("select id from sys_role where code=?", Long.class, request.code());
+        mapper.insertRole(request.code(), request.name(), request.dataScope(), operator);
+        Long id = mapper.findRoleIdByCode(request.code());
         replaceRolePermissions(id, normalizePermissions(request.permissionIds()));
         return id;
     }
@@ -192,74 +171,68 @@ public class SystemManagementService {
         if ("ADMIN".equals(role.get("code"))) throw conflict("系统管理员角色不允许修改");
         validateDataScope(request.dataScope());
         requirePermissions(request.permissionIds());
-        jdbc.update("update sys_role set name=?,data_scope=?,updated_by=? where id=? and deleted=0",
-                request.name(), request.dataScope(), SecurityUtils.currentUser().id(), id);
+        mapper.updateRole(id, request.name(), request.dataScope(), SecurityUtils.currentUser().id());
         replaceRolePermissions(id, normalizePermissions(request.permissionIds()));
     }
 
     public void setRoleStatus(Long id, boolean enabled) {
         Map<String, Object> role = requireRole(id);
         if ("ADMIN".equals(role.get("code")) && !enabled) throw conflict("系统管理员角色不能停用");
-        jdbc.update("update sys_role set enabled=?,updated_by=? where id=? and deleted=0", enabled, SecurityUtils.currentUser().id(), id);
+        mapper.updateRoleStatus(id, enabled, SecurityUtils.currentUser().id());
     }
 
     @Transactional
     public void deleteRole(Long id) {
         Map<String, Object> role = requireRole(id);
         if (Boolean.parseBoolean(role.get("builtIn").toString())) throw conflict("内置角色不能删除");
-        if (count("select count(*) from sys_user_role where role_id=?", id) > 0) throw conflict("角色已分配给用户，不能删除");
-        jdbc.update("delete from sys_role_permission where role_id=?", id);
-        jdbc.update("update sys_role set enabled=0,deleted=1,updated_by=? where id=?", SecurityUtils.currentUser().id(), id);
+        if (mapper.countUsersOfRole(id) > 0) throw conflict("角色已分配给用户，不能删除");
+        mapper.deleteRolePermissions(id);
+        mapper.softDeleteRole(id, SecurityUtils.currentUser().id());
     }
 
     private void replaceUserRoles(Long userId, Set<Long> roleIds) {
-        jdbc.update("delete from sys_user_role where user_id=?", userId);
-        roleIds.forEach(roleId -> jdbc.update("insert into sys_user_role(user_id,role_id) values(?,?)", userId, roleId));
+        mapper.deleteUserRoles(userId);
+        roleIds.forEach(roleId -> mapper.insertUserRole(userId, roleId));
     }
 
     private void replaceRolePermissions(Long roleId, Set<Long> permissionIds) {
-        jdbc.update("delete from sys_role_permission where role_id=?", roleId);
-        permissionIds.forEach(permissionId -> jdbc.update("insert into sys_role_permission(role_id,permission_id) values(?,?)", roleId, permissionId));
+        mapper.deleteRolePermissions(roleId);
+        permissionIds.forEach(permissionId -> mapper.insertRolePermission(roleId, permissionId));
     }
 
     private void requireUser(Long id) {
-        if (count("select count(*) from sys_user where id=? and deleted=0", id) == 0) throw new BusinessException(HttpStatus.NOT_FOUND, "用户不存在");
+        if (mapper.countUser(id) == 0) throw notFound("用户不存在");
     }
 
     private void requireDepartment(Long id, boolean enabled) {
-        String sql = "select count(*) from sys_department where id=? and deleted=0" + (enabled ? " and enabled=1" : "");
-        if (count(sql, id) == 0) throw new BusinessException(HttpStatus.BAD_REQUEST, "部门不存在或不可用");
+        int found = enabled ? mapper.countEnabledDepartment(id) : mapper.countDepartment(id);
+        if (found == 0) throw new BusinessException(HttpStatus.BAD_REQUEST, "部门不存在或不可用");
     }
 
     private void requireRoles(Set<Long> ids) {
         if (ids == null || ids.isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "至少分配一个角色");
-        long valid = ids.stream().filter(id -> count("select count(*) from sys_role where id=? and deleted=0 and enabled=1", id) == 1).count();
+        long valid = ids.stream().filter(id -> mapper.countEnabledRole(id) == 1).count();
         if (valid != ids.size()) throw new BusinessException(HttpStatus.BAD_REQUEST, "包含不存在或已停用的角色");
     }
 
     private void requirePermissions(Set<Long> ids) {
         if (ids == null) throw new BusinessException(HttpStatus.BAD_REQUEST, "权限集合不能为空");
-        long valid = ids.stream().filter(id -> count("select count(*) from sys_permission where id=?", id) == 1).count();
+        long valid = ids.stream().filter(id -> mapper.countPermission(id) == 1).count();
         if (valid != ids.size()) throw new BusinessException(HttpStatus.BAD_REQUEST, "包含不存在的权限");
     }
 
     private Set<Long> normalizePermissions(Set<Long> ids) {
         Set<Long> normalized = new HashSet<>(ids);
         for (Long id : ids) {
-            List<Long> parents = jdbc.query("""
-                    select parent.id from sys_permission child
-                    join sys_permission parent on parent.code=child.parent_code
-                    where child.id=?
-                    """, (rs, n) -> rs.getLong(1), id);
-            normalized.addAll(parents);
+            normalized.addAll(mapper.permissionParentIds(id));
         }
         return normalized;
     }
 
     private Map<String, Object> requireRole(Long id) {
-        List<Map<String, Object>> rows = jdbc.queryForList("select code,built_in builtIn from sys_role where id=? and deleted=0", id);
-        if (rows.isEmpty()) throw new BusinessException(HttpStatus.NOT_FOUND, "角色不存在");
-        return rows.getFirst();
+        Map<String, Object> role = mapper.findRole(id);
+        if (role == null) throw notFound("角色不存在");
+        return role;
     }
 
     private void ensureNoDepartmentCycle(Long id, Long parentId) {
@@ -267,22 +240,19 @@ public class SystemManagementService {
         Long current = parentId;
         while (current != null) {
             if (current.equals(id) || !visited.add(current)) throw conflict("上级部门设置会形成循环");
-            List<Long> parents = jdbc.query("select parent_id from sys_department where id=? and deleted=0", (rs, n) -> {
-                long value = rs.getLong(1);
-                return rs.wasNull() ? null : value;
-            }, current);
-            current = parents.isEmpty() ? null : parents.getFirst();
+            current = mapper.findDepartmentParent(current);
         }
     }
 
     private Long adminRoleId() {
-        return jdbc.queryForObject("select id from sys_role where code='ADMIN' and deleted=0", Long.class);
+        return mapper.findAdminRoleId();
     }
 
     private void protectLastAdminRole(Long userId, boolean remainsAdmin) {
-        boolean currentlyAdmin = count("select count(*) from sys_user_role ur join sys_role r on r.id=ur.role_id where ur.user_id=? and r.code='ADMIN' and r.deleted=0", userId) > 0;
-        if (currentlyAdmin && !remainsAdmin && count("select count(distinct u.id) from sys_user u join sys_user_role ur on ur.user_id=u.id join sys_role r on r.id=ur.role_id where u.deleted=0 and u.enabled=1 and r.code='ADMIN' and r.deleted=0 and r.enabled=1") <= 1)
+        boolean currentlyAdmin = mapper.countAdminRoleOf(userId) > 0;
+        if (currentlyAdmin && !remainsAdmin && mapper.countActiveAdmins() <= 1) {
             throw conflict("必须保留至少一个可用的系统管理员");
+        }
     }
 
     private void validateDataScope(String dataScope) {
@@ -290,12 +260,13 @@ public class SystemManagementService {
     }
 
     private void validatePassword(String password) {
-        if (password.getBytes(StandardCharsets.UTF_8).length > 72) throw new BusinessException(HttpStatus.BAD_REQUEST, "密码编码后不能超过72字节");
+        if (password.getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "密码编码后不能超过72字节");
+        }
     }
 
-    private long count(String sql, Object... args) {
-        Long value = jdbc.queryForObject(sql, Long.class, args);
-        return value == null ? 0 : value;
+    private BusinessException notFound(String message) {
+        return new BusinessException(HttpStatus.NOT_FOUND, message);
     }
 
     private BusinessException conflict(String message) {

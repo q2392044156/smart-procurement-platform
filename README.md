@@ -35,7 +35,8 @@ smart-procurement-platform/
 │   ├── src/main/java/com/procuremind/platform/
 │   │   ├── ProcureMindApplication.java   # 启动类
 │   │   ├── controller/                   # 22 个 REST 入口：路由、校验、权限注解
-│   │   ├── service/                      # 26 个业务服务：状态机、事务、SQL
+│   │   ├── service/                      # 26 个业务服务：状态机、事务编排
+│   │   ├── mapper/                       # 21 个 MyBatis 接口：数据访问，SQL 在 resources/mapper
 │   │   ├── pojo/                         # 响应体与请求对象：ApiResponse、FilePresignRequest
 │   │   ├── exception/                    # BusinessException、全局异常处理
 │   │   ├── filter/                       # JWT、RequestId、内部 Agent 认证
@@ -44,6 +45,7 @@ smart-procurement-platform/
 │   │   ├── utils/                        # SecurityUtils、LegacyStatus
 │   │   └── config/                       # Security、MinIO、Jackson、OpenAPI、演示数据
 │   ├── src/main/resources/
+│   │   ├── mapper/                       # 21 份 MyBatis XML：全部 SQL 语句
 │   │   ├── db/migration/                 # Flyway V1~V12：表结构/主数据/演示数据
 │   │   └── processes/                    # 申请、订单的 Flowable BPMN
 │   ├── src/test/java/...                 # 单元、集成、架构约束测试

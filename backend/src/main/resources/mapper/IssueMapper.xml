@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.procuremind.platform.mapper.IssueMapper">
+
+    <select id="countEnabledWarehouse" resultType="int">
+        select count(*) from md_warehouse where id=#{id} and enabled=1 and deleted=0
+    </select>
+
+    <select id="findMaterial" resultType="map">
+        select tracking_mode,enabled from md_material where id=#{id} and deleted=0
+    </select>
+
+    <insert id="insertIssue">
+        insert into inv_issue(issue_no,warehouse_id,material_id,quantity,batch_no,serial_numbers_json,purpose,
+            department_id,requester_id,issued_by,issued_at,remark,created_by,updated_by)
+        values(#{issueNo},#{warehouseId},#{materialId},#{quantity},#{batchNo},#{serials},#{purpose},
+            #{departmentId},#{userId},#{userId},#{issuedAt},#{remark},#{userId},#{userId})
+    </insert>
+
+    <select id="findIdByNo" resultType="long">
+        select id from inv_issue where issue_no=#{issueNo}
+    </select>
+
+    <update id="issueSerial">
+        update inv_serial set status='ISSUED'
+        where warehouse_id=#{warehouseId} and material_id=#{materialId} and serial_no=#{serialNo} and status='IN_STOCK'
+    </update>
+
+    <update id="decrementBatch">
+        update inv_batch set quantity=quantity-#{quantity}
+        where warehouse_id=#{warehouseId} and material_id=#{materialId} and batch_no=#{batchNo} and quantity&gt;=#{quantity}
+    </update>
+
+    <select id="lockBalance" resultType="map">
+        select id,quantity,version from inv_balance
+        where warehouse_id=#{warehouseId} and material_id=#{materialId} and deleted=0 for update
+    </select>
+
+    <update id="updateBalance">
+        update inv_balance set quantity=#{quantity},version=version+1,updated_by=#{userId} where id=#{id} and version=#{version}
+    </update>
+
+    <insert id="insertLedger">
+        insert into inv_ledger(warehouse_id,material_id,business_type,business_id,direction,quantity,balance_after,batch_no,created_by,created_at)
+        values(#{warehouseId},#{materialId},'ISSUE',#{businessId},'OUT',#{quantity},#{balanceAfter},#{batchNo},#{userId},utc_timestamp(6))
+    </insert>
+
+    <select id="countPage" resultType="int">
+        select count(*) from inv_issue i join md_material m on m.id=i.material_id
+        where i.deleted=0 and (i.issue_no like #{like} or m.code like #{like} or m.name like #{like})
+    </select>
+
+    <select id="page" resultType="map">
+        select cast(i.id as char) id,i.issue_no issueNo,w.name warehouse,m.code materialCode,m.name materialName,
+               i.quantity,i.batch_no batchNo,i.purpose,d.name department,u.display_name requester,
+               i.issued_at issuedAt,i.remark
+        from inv_issue i
+        join md_warehouse w on w.id=i.warehouse_id
+        join md_material m on m.id=i.material_id
+        join sys_department d on d.id=i.department_id
+        join sys_user u on u.id=i.requester_id
+        where i.deleted=0 and (i.issue_no like #{like} or m.code like #{like} or m.name like #{like})
+        order by i.id desc limit #{size} offset #{offset}
+    </select>
+
+    <select id="findDetail" resultType="map">
+        select cast(i.id as char) id,i.issue_no issueNo,w.name warehouse,cast(i.warehouse_id as char) warehouseId,
+               m.code materialCode,m.name materialName,m.tracking_mode trackingMode,cast(i.material_id as char) materialId,
+               i.quantity,i.batch_no batchNo,i.serial_numbers_json serialNumbers,i.purpose,
+               d.name department,u.display_name requester,i.issued_at issuedAt,i.remark
+        from inv_issue i
+        join md_warehouse w on w.id=i.warehouse_id
+        join md_material m on m.id=i.material_id
+        join sys_department d on d.id=i.department_id
+        join sys_user u on u.id=i.requester_id
+        where i.id=#{id} and i.deleted=0
+    </select>
+
+</mapper>

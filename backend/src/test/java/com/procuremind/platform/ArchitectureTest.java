@@ -16,6 +16,11 @@ class ArchitectureTest {
             .should().dependOnClassesThat().haveFullyQualifiedName("org.springframework.jdbc.core.JdbcTemplate");
 
     @ArchTest
+    static final ArchRule servicesDoNotExecuteSql = noClasses()
+            .that().resideInAPackage("..service..")
+            .should().dependOnClassesThat().haveFullyQualifiedName("org.springframework.jdbc.core.JdbcTemplate");
+
+    @ArchTest
     static final ArchRule servicesDoNotDependOnControllers = noClasses()
             .that().resideInAPackage("..service..")
             .should().dependOnClassesThat().resideInAPackage("..controller..");

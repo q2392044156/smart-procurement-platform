@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.procuremind.platform.mapper.AuditMapper">
+
+    <select id="list" resultType="map">
+        select cast(id as char) id,cast(user_id as char) userId,username,method,path,result,
+               error_message errorMessage,request_id requestId,duration_ms durationMs,created_at createdAt
+        from sys_operation_audit
+        order by id desc limit 500
+    </select>
+
+    <insert id="insert">
+        insert into sys_operation_audit(user_id,username,method,path,result,error_message,request_id,duration_ms,created_at)
+        values(#{userId},#{username},#{method},#{path},#{result},#{errorMessage},#{requestId},#{durationMs},utc_timestamp())
+    </insert>
+
+</mapper>

@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.procuremind.platform.mapper.ReceiptMapper">
+
+    <insert id="insertIdempotency">
+        insert into sys_idempotency_record(idempotency_key,user_id,operation,status)
+        values(#{key},#{userId},#{operation},'PROCESSING')
+    </insert>
+
+    <select id="findIdempotency" resultType="map">
+        select status,response_json from sys_idempotency_record
+        where idempotency_key=#{key} and user_id=#{userId} and operation=#{operation}
+    </select>
+
+    <update id="completeIdempotency">
+        update sys_idempotency_record set status='COMPLETED',response_json=#{responseJson}
+        where idempotency_key=#{key} and user_id=#{userId} and operation=#{operation}
+    </update>
+
+    <select id="lockOrder" resultType="map">
+        select status from po_purchase_order where id=#{id} and deleted=0 for update
+    </select>
+
+    <select id="countEnabledWarehouse" resultType="int">
+        select count(*) from md_warehouse where id=#{id} and enabled=1 and deleted=0
+    </select>
+
+    <insert id="insertReceipt">
+        insert into inv_receipt(receipt_no,purchase_order_id,warehouse_id,receiver_id,receipt_date,remark,created_by,updated_by)
+        values(#{receiptNo},#{purchaseOrderId},#{warehouseId},#{userId},#{receiptDate},#{remark},#{userId},#{userId})
+    </insert>
+
+    <select id="findIdByNo" resultType="long">
+        select id from inv_receipt where receipt_no=#{receiptNo}
+    </select>
+
+    <select id="lockOrderItem" resultType="map">
+        select i.material_id,i.quantity,i.received_quantity,m.tracking_mode
+        from po_purchase_order_item i join md_material m on m.id=i.material_id
+        where i.id=#{id} and i.purchase_order_id=#{purchaseOrderId} for update
+    </select>
+
+    <insert id="insertReceiptItem">
+        insert into inv_receipt_item(receipt_id,order_item_id,material_id,quantity,batch_no,serial_numbers_json,created_by,updated_by)
+        values(#{receiptId},#{orderItemId},#{materialId},#{quantity},#{batchNo},#{serialJson},#{userId},#{userId})
+    </insert>
+
+    <select id="lastInsertId" resultType="long">
+        select last_insert_id()
+    </select>
+
+    <update id="increaseReceived">
+        update po_purchase_order_item set received_quantity=received_quantity+#{quantity},version=version+1,updated_by=#{userId}
+        where id=#{id} and received_quantity+#{quantity}&lt;=quantity
+    </update>
+
+    <insert id="upsertBatch">
+        insert into inv_batch(warehouse_id,material_id,batch_no,quantity) values(#{warehouseId},#{materialId},#{batchNo},#{quantity})
+        on duplicate key update quantity=quantity+values(quantity)
+    </insert>
+
+    <insert id="insertSerial">
+        insert into inv_serial(warehouse_id,material_id,serial_no,receipt_item_id)
+        values(#{warehouseId},#{materialId},#{serialNo},#{receiptItemId})
+    </insert>
+
+    <insert id="insertBalance">
+        insert into inv_balance(warehouse_id,material_id,quantity,created_by,updated_by) values(#{warehouseId},#{materialId},0,#{userId},#{userId})
+        on duplicate key update id=id
+    </insert>
+
+    <select id="findBalance" resultType="map">
+        select id,quantity,version from inv_balance where warehouse_id=#{warehouseId} and material_id=#{materialId} and deleted=0
+    </select>
+
+    <update id="updateBalance">
+        update inv_balance set quantity=#{quantity},version=version+1,updated_by=#{userId} where id=#{id} and version=#{version}
+    </update>
+
+    <insert id="insertLedger">
+        insert into inv_ledger(warehouse_id,material_id,business_type,business_id,direction,quantity,balance_after,batch_no,created_by,request_id)
+        values(#{warehouseId},#{materialId},'RECEIPT',#{businessId},'IN',#{quantity},#{balanceAfter},#{batchNo},#{userId},#{requestId})
+    </insert>
+
+    <select id="countUnfinished" resultType="long">
+        select count(*) from po_purchase_order_item where purchase_order_id=#{purchaseOrderId} and received_quantity&lt;quantity and deleted=0
+    </select>
+
+    <update id="updateOrderStatus">
+        update po_purchase_order set status=#{status},updated_by=#{userId} where id=#{id}
+    </update>
+
+</mapper>

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.procuremind.platform.mapper.DashboardMapper">
+
+    <select id="yearPurchaseAmount" resultType="java.math.BigDecimal">
+        select coalesce(sum(total_amount),0) from po_purchase_order
+        where deleted=0 and status not in ('DRAFT','REJECTED','CANCELLED')
+          and year(created_at)=year(utc_timestamp())
+    </select>
+
+    <select id="activeOrders" resultType="long">
+        select count(*) from po_purchase_order
+        where deleted=0 and status in ('APPROVED','PARTIALLY_RECEIVED')
+    </select>
+
+    <select id="lowStockCount" resultType="long">
+        select count(*) from inv_balance b join md_material m on m.id=b.material_id
+        where b.deleted=0 and b.quantity&lt;m.min_stock
+    </select>
+
+    <select id="orderStatus" resultType="map">
+        select status name,count(*) value from po_purchase_order where deleted=0 group by status
+    </select>
+
+    <select id="supplierRanking" resultType="map">
+        select s.name,coalesce(sum(o.total_amount),0) amount,s.score
+        from sp_supplier s
+        left join po_purchase_order o on o.supplier_id=s.id and o.status not in ('DRAFT','REJECTED','CANCELLED')
+        where s.deleted=0
+        group by s.id,s.name,s.score
+        order by amount desc limit 5
+    </select>
+
+    <select id="monthlyTrend" resultType="map">
+        select date_format(created_at,'%Y-%m') month,sum(total_amount) amount
+        from po_purchase_order
+        where deleted=0 and created_at&gt;=date_sub(utc_timestamp(),interval 12 month)
+          and status not in ('DRAFT','REJECTED','CANCELLED')
+        group by date_format(created_at,'%Y-%m')
+        order by month
+    </select>
+
+    <select id="lowStockMaterials" resultType="map">
+        select m.code materialCode,m.name materialName,w.name warehouse,b.quantity,m.min_stock minStock
+        from inv_balance b
+        join md_material m on m.id=b.material_id
+        join md_warehouse w on w.id=b.warehouse_id
+        where b.deleted=0 and b.quantity&lt;m.min_stock
+        order by (m.min_stock-b.quantity) desc limit 10
+    </select>
+
+</mapper>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.procuremind.platform.mapper.FileReferenceMapper">
+
+    <select id="countKnowledgeDocuments" resultType="long">
+        select count(*) from kb_document where file_id=#{fileId} and deleted=0
+    </select>
+
+    <select id="countKnowledgeVersions" resultType="long">
+        select count(*) from kb_document_version v
+        join kb_document d on d.id=v.document_id
+        where v.file_id=#{fileId} and d.deleted=0
+    </select>
+
+</mapper>

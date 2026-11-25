@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.procuremind.platform.mapper.IdempotencyMapper">
+
+    <insert id="insertProcessing">
+        insert into sys_idempotency_record(idempotency_key,user_id,operation,status)
+        values(#{key},#{userId},#{operation},'PROCESSING')
+    </insert>
+
+    <select id="find" resultType="map">
+        select status,response_json,created_at,
+               (created_at &lt; utc_timestamp() - interval #{ttlMinutes} minute) stale
+        from sys_idempotency_record
+        where idempotency_key=#{key} and user_id=#{userId} and operation=#{operation}
+    </select>
+
+    <update id="markFailed">
+        update sys_idempotency_record set status='FAILED'
+        where idempotency_key=#{key} and user_id=#{userId} and operation=#{operation}
+    </update>
+
+    <update id="markCompleted">
+        update sys_idempotency_record set status='COMPLETED',response_json=#{responseJson}
+        where idempotency_key=#{key} and user_id=#{userId} and operation=#{operation}
+    </update>
+
+    <delete id="remove">
+        delete from sys_idempotency_record
+        where idempotency_key=#{key} and user_id=#{userId} and operation=#{operation}
+    </delete>
+
+</mapper>

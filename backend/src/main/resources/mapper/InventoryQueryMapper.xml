@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.procuremind.platform.mapper.InventoryQueryMapper">
+
+    <sql id="receiptColumns">
+        select cast(r.id as char) id,r.receipt_no receiptNo,cast(r.purchase_order_id as char) purchaseOrderId,
+               o.order_no orderNo,w.name warehouse,u.display_name receiver,r.receipt_date receiptDate,r.remark,
+               (select count(*) from inv_receipt_item i where i.receipt_id=r.id and i.deleted=0) itemCount
+        from inv_receipt r
+        join po_purchase_order o on o.id=r.purchase_order_id
+        join md_warehouse w on w.id=r.warehouse_id
+        join sys_user u on u.id=r.receiver_id
+    </sql>
+
+    <select id="receipts" resultType="map">
+        <include refid="receiptColumns"/>
+        where r.deleted=0 order by r.id desc
+    </select>
+
+    <select id="countReceiptPage" resultType="int">
+        select count(*) from inv_receipt r join po_purchase_order o on o.id=r.purchase_order_id
+        where r.deleted=0
+        <if test="keyword != null">and o.order_no like #{keyword}</if>
+    </select>
+
+    <select id="receiptPage" resultType="map">
+        <include refid="receiptColumns"/>
+        where r.deleted=0
+        <if test="keyword != null">and o.order_no like #{keyword}</if>
+        order by r.id desc limit #{size} offset #{offset}
+    </select>
+
+    <select id="findReceipt" resultType="map">
+        select cast(r.id as char) id,r.receipt_no receiptNo,cast(r.purchase_order_id as char) purchaseOrderId,
+               o.order_no orderNo,cast(r.warehouse_id as char) warehouseId,w.name warehouse,
+               cast(r.receiver_id as char) receiverId,u.display_name receiver,r.receipt_date receiptDate,r.remark,r.created_at createdAt
+        from inv_receipt r
+        join po_purchase_order o on o.id=r.purchase_order_id
+        join md_warehouse w on w.id=r.warehouse_id
+        join sys_user u on u.id=r.receiver_id
+        where r.id=#{id} and r.deleted=0
+    </select>
+
+    <select id="findReceiptItems" resultType="map">
+        select cast(i.id as char) id,cast(i.order_item_id as char) purchaseOrderItemId,
+               cast(i.material_id as char) materialId,m.code materialCode,m.name materialName,
+               m.tracking_mode trackingMode,i.quantity,i.batch_no batchNo,i.serial_numbers_json serialNumbers
+        from inv_receipt_item i join md_material m on m.id=i.material_id
+        where i.receipt_id=#{id} and i.deleted=0 order by i.id
+    </select>
+
+    <sql id="balanceColumns">
+        select cast(b.id as char) id,w.name warehouse,m.code materialCode,m.name materialName,
+               m.tracking_mode trackingMode,b.quantity,m.min_stock minStock,(b.quantity&lt;m.min_stock) lowStock
+        from inv_balance b join md_warehouse w on w.id=b.warehouse_id join md_material m on m.id=b.material_id
+    </sql>
+
+    <select id="countBalances" resultType="int">
+        select count(*) from inv_balance b
+        join md_warehouse w on w.id=b.warehouse_id join md_material m on m.id=b.material_id
+        where b.deleted=0 and (m.code like #{like} or m.name like #{like} or w.name like #{like})
+    </select>
+
+    <select id="balancesPage" resultType="map">
+        <include refid="balanceColumns"/>
+        where b.deleted=0 and (m.code like #{like} or m.name like #{like} or w.name like #{like})
+        order by (b.quantity&lt;m.min_stock) desc,m.code limit #{size} offset #{offset}
+    </select>
+
+    <select id="balances" resultType="map">
+        <include refid="balanceColumns"/>
+        where b.deleted=0 order by lowStock desc,m.code
+    </select>
+
+    <sql id="ledgerColumns">
+        select cast(l.id as char) id,w.name warehouse,m.code materialCode,m.name materialName,
+               l.business_type businessType,cast(l.business_id as char) businessId,l.direction,l.quantity,
+               l.balance_after balanceAfter,l.batch_no batchNo,l.created_at createdAt
+        from inv_ledger l join md_warehouse w on w.id=l.warehouse_id join md_material m on m.id=l.material_id
+    </sql>
+
+    <select id="countLedger" resultType="int">
+        select count(*) from inv_ledger l
+        join md_warehouse w on w.id=l.warehouse_id join md_material m on m.id=l.material_id
+        where m.code like #{like} or m.name like #{like}
+    </select>
+
+    <select id="ledgerPage" resultType="map">
+        <include refid="ledgerColumns"/>
+        where m.code like #{like} or m.name like #{like}
+        order by l.id desc limit #{size} offset #{offset}
+    </select>
+
+    <select id="ledger" resultType="map">
+        <include refid="ledgerColumns"/>
+        order by l.id desc limit 500
+    </select>
+
+</mapper>

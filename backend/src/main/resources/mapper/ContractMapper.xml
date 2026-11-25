@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.procuremind.platform.mapper.ContractMapper">
+
+    <sql id="pageWhere">
+        c.deleted=0
+        and (c.contract_no like #{like} or c.name like #{like} or s.name like #{like})
+        <if test="state != null">and c.status=#{state}</if>
+    </sql>
+
+    <select id="countPage" resultType="int">
+        select count(*) from ct_contract c join sp_supplier s on s.id=c.supplier_id
+        where <include refid="pageWhere"/>
+    </select>
+
+    <select id="page" resultType="map">
+        select cast(c.id as char) id,c.contract_no contractNo,c.name,cast(c.supplier_id as char) supplierId,
+               s.name supplier,c.type,c.amount,c.signed_date signedDate,c.start_date startDate,c.end_date endDate,
+               c.status,cast(c.purchase_order_id as char) purchaseOrderId,o.order_no orderNo,
+               c.created_at createdAt
+        from ct_contract c
+        join sp_supplier s on s.id=c.supplier_id
+        left join po_purchase_order o on o.id=c.purchase_order_id
+        where <include refid="pageWhere"/>
+        order by c.id desc limit #{size} offset #{offset}
+    </select>
+
+    <select id="findDetail" resultType="map">
+        select cast(c.id as char) id,c.contract_no contractNo,c.name,cast(c.supplier_id as char) supplierId,
+               s.name supplier,c.type,c.amount,c.signed_date signedDate,c.start_date startDate,c.end_date endDate,
+               c.status,cast(c.purchase_order_id as char) purchaseOrderId,o.order_no orderNo,
+               cast(c.file_id as char) fileId,f.original_name fileName,c.remark,c.created_at createdAt
+        from ct_contract c
+        join sp_supplier s on s.id=c.supplier_id
+        left join po_purchase_order o on o.id=c.purchase_order_id
+        left join fs_file_metadata f on f.id=c.file_id and f.deleted=0
+        where c.id=#{id} and c.deleted=0
+    </select>
+
+    <insert id="insert">
+        insert into ct_contract(contract_no,name,supplier_id,purchase_order_id,type,amount,signed_date,start_date,
+            end_date,status,file_id,remark,created_by,updated_by)
+        values(#{contractNo},#{name},#{supplierId},#{purchaseOrderId,jdbcType=BIGINT},#{type},#{amount},
+            #{signedDate,jdbcType=DATE},#{startDate,jdbcType=DATE},#{endDate,jdbcType=DATE},'DRAFT',
+            #{fileId,jdbcType=BIGINT},#{remark,jdbcType=VARCHAR},#{userId},#{userId})
+    </insert>
+
+    <select id="findIdByNo" resultType="long">
+        select id from ct_contract where contract_no=#{contractNo}
+    </select>
+
+    <update id="update">
+        update ct_contract set name=#{name},supplier_id=#{supplierId},
+            purchase_order_id=#{purchaseOrderId,jdbcType=BIGINT},type=#{type},amount=#{amount},
+            signed_date=#{signedDate,jdbcType=DATE},start_date=#{startDate,jdbcType=DATE},
+            end_date=#{endDate,jdbcType=DATE},file_id=#{fileId,jdbcType=BIGINT},
+            remark=#{remark,jdbcType=VARCHAR},updated_by=#{userId}
+        where id=#{id} and deleted=0
+    </update>
+
+    <update id="activate">
+        update ct_contract set status='ACTIVE',updated_by=#{userId} where id=#{id}
+    </update>
+
+    <update id="terminate">
+        update ct_contract set status='TERMINATED',updated_by=#{userId} where id=#{id}
+    </update>
+
+    <update id="softDelete">
+        update ct_contract set deleted=1,updated_by=#{userId} where id=#{id}
+    </update>
+
+    <update id="expireDue">
+        update ct_contract set status='EXPIRED'
+        where status='ACTIVE' and end_date is not null and end_date&lt;curdate() and deleted=0
+    </update>
+
+    <select id="findStatus" resultType="map">
+        select status,deleted from ct_contract where id=#{id} and deleted=0
+    </select>
+
+    <select id="countSupplier" resultType="int">
+        select count(*) from sp_supplier where id=#{supplierId} and deleted=0
+    </select>
+
+    <select id="findOrderSupplier" resultType="long">
+        select supplier_id from po_purchase_order where id=#{purchaseOrderId} and deleted=0
+    </select>
+
+</mapper>

@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.procuremind.platform.mapper.KnowledgeMapper">
+
+    <!-- 列表与详情的投影口径不同：列表多两个 ACL 计数，详情多 contentType，保持原样。 -->
+    <sql id="listColumns">
+        cast(d.id as char) id,d.code,d.title,d.category,d.summary,d.tags,
+        cast(d.owner_department_id as char) ownerDepartmentId,dep.name ownerDepartment,
+        d.visibility,d.status,d.current_version currentVersion,
+        cast(d.file_id as char) fileId,f.original_name fileName,f.size_bytes sizeBytes,
+        d.effective_from effectiveFrom,d.effective_to effectiveTo,
+        d.created_at createdAt,d.updated_at updatedAt,u.display_name createdByName
+    </sql>
+
+    <!-- 可见范围片断：ALL / SELF / 本部门 / 部门子树 / 自定义 ACL。语义与原服务内拼装完全一致。 -->
+    <sql id="visibilityClause">
+        (d.visibility='ALL'
+        or (d.visibility='SELF' and d.created_by=#{userId,jdbcType=BIGINT})
+        or (d.visibility='DEPARTMENT' and d.owner_department_id=#{departmentId,jdbcType=BIGINT})
+        or (d.visibility='DEPARTMENT_AND_CHILDREN' and d.owner_department_id in
+            <foreach collection="departmentIds" item="deptId" open="(" separator="," close=")">#{deptId,jdbcType=BIGINT}</foreach>)
+        or (d.visibility='CUSTOM' and exists(select 1 from kb_document_acl a
+            where a.document_id=d.id and ((a.subject_type='USER' and a.subject_key=#{userIdKey,jdbcType=VARCHAR})
+            <if test="roles != null and roles.size() > 0">
+                or (a.subject_type='ROLE' and a.subject_key in
+                    <foreach collection="roles" item="role" open="(" separator="," close=")">#{role,jdbcType=VARCHAR}</foreach>)
+            </if>
+            ))))
+    </sql>
+
+    <sql id="documentWhere">
+        d.deleted=0
+        <if test="keyword != null and keyword != ''">
+            and (d.title like concat('%', #{keyword}, '%') or d.code like concat('%', #{keyword}, '%')
+            or d.tags like concat('%', #{keyword}, '%') or d.summary like concat('%', #{keyword}, '%'))
+        </if>
+        <if test="category != null and category != ''">
+            and d.category=#{category}
+        </if>
+        <if test="manage">
+            <if test="status != null and status != ''">
+                and d.status=#{status}
+            </if>
+        </if>
+        <if test="!manage">
+            and d.status='PUBLISHED'
+        </if>
+        and <include refid="visibilityClause"/>
+    </sql>
+
+    <select id="countDocuments" resultType="long">
+        select count(*) from kb_document d where
+        <include refid="documentWhere"/>
+    </select>
+
+    <select id="pageDocuments" resultType="map">
+        select <include refid="listColumns"/>,
+        (select count(*) from kb_document_acl a where a.document_id=d.id and a.subject_type='USER') userAclCount,
+        (select count(*) from kb_document_acl a where a.document_id=d.id and a.subject_type='ROLE') roleAclCount
+        from kb_document d
+        join fs_file_metadata f on f.id=d.file_id and f.deleted=0
+        left join sys_department dep on dep.id=d.owner_department_id
+        left join sys_user u on u.id=d.created_by
+        where
+        <include refid="documentWhere"/>
+        order by d.updated_at desc,d.id desc limit #{size} offset #{offset}
+    </select>
+
+    <select id="findDetail" resultType="map">
+        select cast(d.id as char) id,d.code,d.title,d.category,d.summary,d.tags,
+               cast(d.owner_department_id as char) ownerDepartmentId,dep.name ownerDepartment,
+               d.visibility,d.status,d.current_version currentVersion,
+               cast(d.file_id as char) fileId,f.original_name fileName,f.content_type contentType,f.size_bytes sizeBytes,
+               d.effective_from effectiveFrom,d.effective_to effectiveTo,
+               d.created_at createdAt,d.updated_at updatedAt,u.display_name createdByName
+        from kb_document d
+        join fs_file_metadata f on f.id=d.file_id and f.deleted=0
+        left join sys_department dep on dep.id=d.owner_department_id
+        left join sys_user u on u.id=d.created_by
+        where d.id=#{id} and d.deleted=0
+    </select>
+
+    <select id="findVersions" resultType="map">
+        select cast(v.id as char) id,v.version,cast(v.file_id as char) fileId,v.file_name fileName,
+               v.change_note changeNote,v.created_at createdAt,u.display_name createdByName
+        from kb_document_version v left join sys_user u on u.id=v.created_by
+        where v.document_id=#{id} order by v.version desc
+    </select>
+
+    <select id="findAcl" resultType="map">
+        select cast(id as char) id,subject_type subjectType,subject_key subjectKey
+        from kb_document_acl where document_id=#{id} order by subject_type,subject_key
+    </select>
+
+    <select id="findReadable" resultType="map">
+        select cast(d.id as char) id,cast(d.file_id as char) fileId,d.status,d.visibility
+        from kb_document d where d.id=#{id} and d.deleted=0 and <include refid="visibilityClause"/>
+        <if test="!manage">
+            and d.status='PUBLISHED'
+        </if>
+    </select>
+
+    <select id="findPublishedFile" resultType="map">
+        select cast(d.file_id as char) fileId from kb_document d
+        where d.id=#{id} and d.deleted=0 and d.status='PUBLISHED' and <include refid="visibilityClause"/>
+    </select>
+
+    <select id="visibleDocumentIds" resultType="map">
+        select cast(d.id as char) id,d.title,d.category,d.current_version currentVersion,d.updated_at updatedAt
+        from kb_document d
+        where d.deleted=0 and d.status='PUBLISHED' and <include refid="visibilityClause"/> order by d.id
+    </select>
+
+    <select id="changedSince" resultType="map">
+        select cast(id as char) id,status,deleted,current_version currentVersion,updated_at updatedAt
+        from kb_document where updated_at &gt;= #{since,jdbcType=TIMESTAMP} order by updated_at,id
+    </select>
+
+    <select id="findManagedDocument" resultType="map">
+        select cast(d.id as char) id,d.status,d.visibility,d.current_version currentVersion,
+               cast(d.owner_department_id as char) ownerDepartmentId,cast(d.file_id as char) fileId,
+               d.effective_to effectiveTo
+        from kb_document d where d.id=#{id} and d.deleted=0
+    </select>
+
+    <insert id="insertDocument">
+        insert into kb_document(code,title,category,summary,tags,owner_department_id,visibility,status,current_version,
+            file_id,effective_from,effective_to,created_by,updated_by)
+        values(#{code},#{title},#{category},#{summary,jdbcType=VARCHAR},#{tags,jdbcType=VARCHAR},
+            #{ownerDepartmentId},#{visibility},'DRAFT',1,#{fileId},#{effectiveFrom,jdbcType=DATE},
+            #{effectiveTo,jdbcType=DATE},#{userId},#{userId})
+    </insert>
+
+    <select id="findIdByCode" resultType="long">
+        select id from kb_document where code=#{code}
+    </select>
+
+    <select id="findFileName" resultType="string">
+        select original_name from fs_file_metadata where id=#{fileId} and deleted=0
+    </select>
+
+    <insert id="insertVersion">
+        insert into kb_document_version(document_id,version,file_id,file_name,change_note,created_by)
+        values(#{documentId},#{version},#{fileId},#{fileName},#{note,jdbcType=VARCHAR},#{userId})
+    </insert>
+
+    <update id="updateDocument">
+        update kb_document set title=#{title},category=#{category},summary=#{summary,jdbcType=VARCHAR},
+            tags=#{tags,jdbcType=VARCHAR},owner_department_id=#{ownerDepartmentId},visibility=#{visibility},
+            effective_from=#{effectiveFrom,jdbcType=DATE},effective_to=#{effectiveTo,jdbcType=DATE},updated_by=#{userId}
+        where id=#{id} and deleted=0
+    </update>
+
+    <update id="updateFile">
+        update kb_document set file_id=#{fileId},current_version=#{currentVersion},updated_by=#{userId}
+        where id=#{id} and deleted=0
+    </update>
+
+    <update id="updateStatus">
+        update kb_document set status=#{status},updated_by=#{userId} where id=#{id} and deleted=0
+    </update>
+
+    <update id="softDelete">
+        update kb_document set deleted=1,updated_by=#{userId} where id=#{id}
+    </update>
+
+    <delete id="deleteAcl">
+        delete from kb_document_acl where document_id=#{documentId}
+    </delete>
+
+    <insert id="insertAcl">
+        insert into kb_document_acl(document_id,subject_type,subject_key,created_by)
+        values(#{documentId},#{subjectType},#{subjectKey},#{userId})
+    </insert>
+
+    <select id="countUser" resultType="int">
+        select count(*) from sys_user where id=#{userId} and deleted=0
+    </select>
+
+    <select id="countRole" resultType="int">
+        select count(*) from sys_role where code=#{code} and deleted=0
+    </select>
+
+    <select id="countFile" resultType="int">
+        select count(*) from fs_file_metadata where id=#{fileId} and deleted=0
+    </select>
+
+    <select id="countDepartment" resultType="int">
+        select count(*) from sys_department where id=#{departmentId} and deleted=0
+    </select>
+
+</mapper>

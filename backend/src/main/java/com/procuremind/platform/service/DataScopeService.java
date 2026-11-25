@@ -1,20 +1,26 @@
 package com.procuremind.platform.service;
 
 import com.procuremind.platform.anno.CurrentUser;
-import com.procuremind.platform.utils.SecurityUtils;
-
 import com.procuremind.platform.exception.BusinessException;
+import com.procuremind.platform.mapper.DataScopeMapper;
+import com.procuremind.platform.utils.SecurityUtils;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 
 @Service
 public class DataScopeService {
-    private final JdbcTemplate jdbc;
+    private final DataScopeMapper mapper;
 
-    public DataScopeService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
+    public DataScopeService(DataScopeMapper mapper) { this.mapper = mapper; }
 
     public SqlFilter requisitionFilter(String alias) {
         return filter(alias + ".department_id", alias + ".applicant_id");
@@ -36,12 +42,12 @@ public class DataScopeService {
 
     public void requireRequisition(Long id) {
         SqlFilter filter = requisitionFilter("r");
-        require("select count(*) from pr_requisition r where r.id=? and r.deleted=0 and " + filter.clause(), id, filter.args());
+        require(mapper.countRequisitionInScope(id, filter.literal()));
     }
 
     public void requirePurchaseOrder(Long id) {
         SqlFilter filter = purchaseOrderFilter("o", "u");
-        require("select count(*) from po_purchase_order o join sys_user u on u.id=o.purchaser_id where o.id=? and o.deleted=0 and " + filter.clause(), id, filter.args());
+        require(mapper.countPurchaseOrderInScope(id, filter.literal()));
     }
 
     public void requireBusinessKey(String businessKey) {
@@ -74,17 +80,22 @@ public class DataScopeService {
     }
 
     private Scope effectiveScope(Long userId) {
-        return jdbc.queryForList("select r.data_scope from sys_role r join sys_user_role ur on ur.role_id=r.id where ur.user_id=? and r.deleted=0 and r.enabled=1", String.class, userId)
-                .stream().map(Scope::valueOf).max(Comparator.comparingInt(Scope::rank)).orElse(Scope.SELF);
+        return mapper.roleScopes(userId).stream()
+                .map(Scope::valueOf)
+                .max(Comparator.comparingInt(Scope::rank))
+                .orElse(Scope.SELF);
     }
 
     /** 部门及其全部下级部门，供数据范围与知识库可见性共用。 */
     public List<Long> departmentSubtree(Long root) {
         Map<Long, List<Long>> children = new HashMap<>();
-        jdbc.query("select id,parent_id from sys_department where deleted=0", rs -> {
-            Long parent = rs.getObject("parent_id", Long.class);
-            if (parent != null) children.computeIfAbsent(parent, ignored -> new ArrayList<>()).add(rs.getLong("id"));
-        });
+        for (Map<String, Object> row : mapper.departments()) {
+            Long parent = row.get("parent_id") == null ? null : ((Number) row.get("parent_id")).longValue();
+            if (parent != null) {
+                Long id = ((Number) row.get("id")).longValue();
+                children.computeIfAbsent(parent, ignored -> new ArrayList<>()).add(id);
+            }
+        }
         LinkedHashSet<Long> result = new LinkedHashSet<>();
         ArrayDeque<Long> queue = new ArrayDeque<>();
         queue.add(root);
@@ -95,12 +106,8 @@ public class DataScopeService {
         return new ArrayList<>(result);
     }
 
-    private void require(String sql, Long id, Object[] scopeArgs) {
-        Object[] args = new Object[scopeArgs.length + 1];
-        args[0] = id;
-        System.arraycopy(scopeArgs, 0, args, 1, scopeArgs.length);
-        Long count = jdbc.queryForObject(sql, Long.class, args);
-        if (count == null || count == 0) throw new BusinessException(HttpStatus.NOT_FOUND, "数据不存在或不在当前数据范围内");
+    private void require(int found) {
+        if (found == 0) throw new BusinessException(HttpStatus.NOT_FOUND, "数据不存在或不在当前数据范围内");
     }
 
     private enum Scope {

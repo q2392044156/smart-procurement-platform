@@ -1,9 +1,9 @@
 package com.procuremind.platform.service;
 
 import com.procuremind.platform.exception.BusinessException;
+import com.procuremind.platform.mapper.BudgetMapper;
 import com.procuremind.platform.utils.SecurityUtils;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,20 +22,15 @@ import java.util.Map;
  */
 @Service
 public class BudgetService {
-    private final JdbcTemplate jdbc;
+    private final BudgetMapper mapper;
 
-    public BudgetService(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    public BudgetService(BudgetMapper mapper) {
+        this.mapper = mapper;
     }
 
     public List<Map<String, Object>> list(int year) {
         int fiscalYear = year <= 0 ? LocalDate.now().getYear() : year;
-        List<Map<String, Object>> rows = jdbc.queryForList("""
-                select cast(b.id as char) id,cast(b.department_id as char) departmentId,d.code departmentCode,d.name department,
-                       b.fiscal_year fiscalYear,b.amount allocated
-                from fin_budget b join sys_department d on d.id=b.department_id
-                where b.fiscal_year=? order by d.sort_order,d.id
-                """, fiscalYear);
+        List<Map<String, Object>> rows = mapper.list(fiscalYear);
         List<Map<String, Object>> result = new ArrayList<>();
         for (Map<String, Object> row : rows) {
             Long departmentId = Long.valueOf(row.get("departmentId").toString());
@@ -57,22 +52,16 @@ public class BudgetService {
         int fiscalYear = year <= 0 ? LocalDate.now().getYear() : year;
         if (departmentId == null) throw new BusinessException(HttpStatus.BAD_REQUEST, "部门不能为空");
         if (amount == null || amount.signum() < 0) throw new BusinessException(HttpStatus.BAD_REQUEST, "预算金额不能为负数");
-        Long exists = jdbc.queryForObject("select count(*) from sys_department where id=? and deleted=0", Long.class, departmentId);
-        if (exists == null || exists == 0) throw new BusinessException(HttpStatus.BAD_REQUEST, "部门不存在");
+        if (mapper.countDepartment(departmentId) == 0) throw new BusinessException(HttpStatus.BAD_REQUEST, "部门不存在");
         Long user = SecurityUtils.currentUser().id();
-        jdbc.update("""
-                insert into fin_budget(department_id,fiscal_year,amount,created_by,updated_by)
-                values(?,?,?,?,?) on duplicate key update amount=values(amount),updated_by=values(updated_by)
-                """, departmentId, fiscalYear, amount, user, user);
+        mapper.upsert(departmentId, fiscalYear, amount, user);
     }
 
     public void check(Long departmentId, BigDecimal amount) {
         if (departmentId == null || amount == null || amount.signum() <= 0) return;
         int fiscalYear = LocalDate.now().getYear();
-        List<BigDecimal> allocatedRows = jdbc.queryForList(
-                "select amount from fin_budget where department_id=? and fiscal_year=?", BigDecimal.class, departmentId, fiscalYear);
-        if (allocatedRows.isEmpty()) return;
-        BigDecimal allocated = allocatedRows.getFirst();
+        BigDecimal allocated = mapper.findAllocated(departmentId, fiscalYear);
+        if (allocated == null) return;
         BigDecimal available = allocated.subtract(committed(departmentId, fiscalYear));
         if (available.compareTo(amount) < 0) {
             throw new BusinessException(HttpStatus.CONFLICT,
@@ -81,17 +70,8 @@ public class BudgetService {
     }
 
     private BigDecimal committed(Long departmentId, int fiscalYear) {
-        BigDecimal requisitions = jdbc.queryForObject("""
-                select coalesce(sum(budget_amount),0) from pr_requisition
-                where department_id=? and deleted=0 and year(created_at)=?
-                  and status in ('PENDING_APPROVAL','APPROVED','CONVERTED')
-                """, BigDecimal.class, departmentId, fiscalYear);
-        BigDecimal directOrders = jdbc.queryForObject("""
-                select coalesce(sum(o.total_amount),0) from po_purchase_order o
-                join sys_user u on u.id=o.purchaser_id
-                where o.requisition_id is null and o.deleted=0 and u.department_id=? and year(o.created_at)=?
-                  and o.status in ('PENDING_APPROVAL','APPROVED','PARTIALLY_RECEIVED','RECEIVED','CLOSED')
-                """, BigDecimal.class, departmentId, fiscalYear);
+        BigDecimal requisitions = mapper.sumRequisitionCommitted(departmentId, fiscalYear);
+        BigDecimal directOrders = mapper.sumDirectOrderCommitted(departmentId, fiscalYear);
         return (requisitions == null ? BigDecimal.ZERO : requisitions)
                 .add(directOrders == null ? BigDecimal.ZERO : directOrders);
     }

@@ -1,0 +1,316 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.procuremind.platform.mapper.SupplierMapper">
+
+    <!-- 列表与分页共用同一套投影，5 个计数子查询是既有口径，保持原样。 -->
+    <sql id="listColumns">
+        cast(s.id as char) id,
+        s.code,
+        s.name,
+        s.unified_credit_code unifiedCreditCode,
+        s.level,
+        s.status,
+        s.contact_name contactName,
+        s.contact_phone contactPhone,
+        s.email,
+        s.address,
+        s.score,
+        (select count(*) from sp_supplier_contact c where c.supplier_id=s.id and c.deleted=0) contactCount,
+        (select count(*) from sp_supplier_qualification q where q.supplier_id=s.id and q.deleted=0) qualificationCount,
+        (select count(*) from sp_supplier_evaluation e where e.supplier_id=s.id and e.deleted=0) evaluationCount,
+        (select count(*) from sp_supplier_qualification q
+         where q.supplier_id=s.id and q.deleted=0 and q.status&lt;&gt;'REVOKED'
+           and q.valid_until is not null and q.valid_until&lt;current_date) expiredQualificationCount,
+        (select count(*) from po_purchase_order o where o.supplier_id=s.id and o.deleted=0) orderCount
+    </sql>
+
+    <sql id="keywordFilter">
+        <if test="keyword != null and keyword != ''">
+            and (s.code like concat('%', #{keyword}, '%') or s.name like concat('%', #{keyword}, '%'))
+        </if>
+    </sql>
+
+    <sql id="pageWhere">
+        s.deleted=0
+        <include refid="keywordFilter"/>
+        <if test="status != null and status != ''">
+            and s.status=#{status}
+        </if>
+    </sql>
+
+    <select id="list" resultType="map">
+        select <include refid="listColumns"/>
+        from sp_supplier s
+        where s.deleted=0
+        <include refid="keywordFilter"/>
+        order by field(s.status,'QUALIFIED','PENDING','SUSPENDED','BLACKLISTED'),s.score desc,s.id
+    </select>
+
+    <select id="countPage" resultType="long">
+        select count(*) from sp_supplier s where <include refid="pageWhere"/>
+    </select>
+
+    <select id="page" resultType="map">
+        select <include refid="listColumns"/>
+        from sp_supplier s
+        where <include refid="pageWhere"/>
+        order by s.id desc limit #{size} offset #{offset}
+    </select>
+
+    <select id="findById" resultType="map">
+        select cast(id as char) id,code,name,unified_credit_code unifiedCreditCode,level,status,
+               contact_name contactName,contact_phone contactPhone,email,address,score
+        from sp_supplier
+        where id=#{id} and deleted=0
+    </select>
+
+    <select id="findContacts" resultType="map">
+        select cast(id as char) id,name,position,phone,email,is_primary primaryContact
+        from sp_supplier_contact
+        where supplier_id=#{supplierId} and deleted=0
+        order by is_primary desc,id
+    </select>
+
+    <select id="findQualifications" resultType="map">
+        select cast(q.id as char) id,q.name,cast(q.file_id as char) fileId,f.original_name fileName,
+               q.valid_from validFrom,q.valid_until validUntil,
+               case when q.status='REVOKED' then 'REVOKED'
+                    when q.valid_until is not null and q.valid_until&lt;current_date then 'EXPIRED'
+                    when q.valid_until is not null and q.valid_until&lt;=date_add(current_date,interval 30 day) then 'EXPIRING'
+                    else 'VALID' end status
+        from sp_supplier_qualification q
+        left join fs_file_metadata f on f.id=q.file_id and f.deleted=0
+        where q.supplier_id=#{supplierId} and q.deleted=0
+        order by q.valid_until is null,q.valid_until desc,q.id
+    </select>
+
+    <select id="findEvaluations" resultType="map">
+        select cast(id as char) id,period,quality_score qualityScore,delivery_score deliveryScore,
+               service_score serviceScore,total_score totalScore,comment
+        from sp_supplier_evaluation
+        where supplier_id=#{supplierId} and deleted=0
+        order by period desc,id desc
+    </select>
+
+    <select id="findPrimaryContactSnapshot" resultType="map">
+        select name,phone,email from sp_supplier_contact
+        where supplier_id=#{supplierId} and deleted=0
+        order by is_primary desc,id limit 1
+    </select>
+
+    <select id="findFileUploader" resultType="map">
+        select uploader_id from fs_file_metadata where id=#{fileId} and deleted=0
+    </select>
+
+    <select id="findFirstContactId" resultType="long">
+        select id from sp_supplier_contact
+        where supplier_id=#{supplierId} and deleted=0
+        order by is_primary desc,id limit 1
+    </select>
+
+    <select id="findIdByCode" resultType="long">
+        select id from sp_supplier where code=#{code}
+    </select>
+
+    <select id="findMaxContactId" resultType="long">
+        select max(id) from sp_supplier_contact where supplier_id=#{supplierId} and deleted=0
+    </select>
+
+    <select id="findMaxQualificationId" resultType="long">
+        select max(id) from sp_supplier_qualification
+        where supplier_id=#{supplierId} and name=#{name} and deleted=0
+    </select>
+
+    <select id="findMaxEvaluationId" resultType="long">
+        select max(id) from sp_supplier_evaluation
+        where supplier_id=#{supplierId} and period=#{period} and deleted=0
+    </select>
+
+    <select id="countOrdersBySupplier" resultType="int">
+        select count(*) from po_purchase_order where supplier_id=#{supplierId} and deleted=0
+    </select>
+
+    <select id="countContacts" resultType="int">
+        select count(*) from sp_supplier_contact where supplier_id=#{supplierId} and deleted=0
+    </select>
+
+    <select id="countPrimaryContacts" resultType="int">
+        select count(*) from sp_supplier_contact
+        where supplier_id=#{supplierId} and deleted=0 and is_primary=1
+    </select>
+
+    <select id="countValidQualification" resultType="int">
+        select count(*) from sp_supplier_qualification
+        where supplier_id=#{supplierId} and deleted=0 and status&lt;&gt;'REVOKED'
+          and (valid_until is null or valid_until&gt;=current_date)
+    </select>
+
+    <select id="countCreditCode" resultType="int">
+        select count(*) from sp_supplier where unified_credit_code=#{unifiedCreditCode} and deleted=0
+    </select>
+
+    <select id="countCreditCodeExcluding" resultType="int">
+        select count(*) from sp_supplier
+        where unified_credit_code=#{unifiedCreditCode} and id&lt;&gt;#{id} and deleted=0
+    </select>
+
+    <select id="countQualificationName" resultType="int">
+        select count(*) from sp_supplier_qualification
+        where supplier_id=#{supplierId} and name=#{name} and deleted=0
+    </select>
+
+    <select id="countQualificationNameExcluding" resultType="int">
+        select count(*) from sp_supplier_qualification
+        where supplier_id=#{supplierId} and name=#{name} and id&lt;&gt;#{id} and deleted=0
+    </select>
+
+    <select id="countEvaluationPeriod" resultType="int">
+        select count(*) from sp_supplier_evaluation
+        where supplier_id=#{supplierId} and period=#{period} and deleted=0
+    </select>
+
+    <select id="countEvaluationPeriodExcluding" resultType="int">
+        select count(*) from sp_supplier_evaluation
+        where supplier_id=#{supplierId} and period=#{period} and id&lt;&gt;#{id} and deleted=0
+    </select>
+
+    <!-- table 由服务层写死传入（三张子表之一），不是请求参数，所以只能用 ${} 拼表名。 -->
+    <select id="countChild" resultType="int">
+        select count(*) from ${table} where id=#{id} and supplier_id=#{supplierId} and deleted=0
+    </select>
+
+    <insert id="insertSupplier">
+        insert into sp_supplier(code,name,unified_credit_code,level,status,contact_name,contact_phone,email,address,
+                                created_by,updated_by)
+        values (#{code}, #{name}, #{unifiedCreditCode,jdbcType=VARCHAR}, #{level}, #{status},
+                #{contactName,jdbcType=VARCHAR}, #{contactPhone,jdbcType=VARCHAR}, #{email,jdbcType=VARCHAR},
+                #{address,jdbcType=VARCHAR}, #{userId}, #{userId})
+    </insert>
+
+    <update id="updateSupplier">
+        update sp_supplier
+        set name=#{name}, unified_credit_code=#{unifiedCreditCode,jdbcType=VARCHAR}, level=#{level},
+            status=#{status}, address=#{address,jdbcType=VARCHAR}, updated_by=#{userId}
+        where id=#{id} and deleted=0
+    </update>
+
+    <update id="updateStatus">
+        update sp_supplier set status=#{status}, updated_by=#{userId} where id=#{id} and deleted=0
+    </update>
+
+    <update id="softDeleteSupplier">
+        update sp_supplier set deleted=1, status='SUSPENDED', updated_by=#{userId} where id=#{id}
+    </update>
+
+    <update id="softDeleteContacts">
+        update sp_supplier_contact set deleted=1, updated_by=#{userId}
+        where supplier_id=#{supplierId} and deleted=0
+    </update>
+
+    <update id="softDeleteQualifications">
+        update sp_supplier_qualification set deleted=1, updated_by=#{userId}
+        where supplier_id=#{supplierId} and deleted=0
+    </update>
+
+    <update id="softDeleteEvaluations">
+        update sp_supplier_evaluation set deleted=1, updated_by=#{userId}
+        where supplier_id=#{supplierId} and deleted=0
+    </update>
+
+    <insert id="insertContact">
+        insert into sp_supplier_contact(supplier_id,name,position,phone,email,is_primary,created_by,updated_by)
+        values (#{supplierId}, #{name}, #{position,jdbcType=VARCHAR}, #{phone,jdbcType=VARCHAR},
+                #{email,jdbcType=VARCHAR}, #{primaryContact}, #{userId}, #{userId})
+    </insert>
+
+    <update id="updateContact">
+        update sp_supplier_contact
+        set name=#{name}, position=#{position,jdbcType=VARCHAR}, phone=#{phone,jdbcType=VARCHAR},
+            email=#{email,jdbcType=VARCHAR}, is_primary=#{primaryContact}, updated_by=#{userId}
+        where id=#{id} and supplier_id=#{supplierId} and deleted=0
+    </update>
+
+    <update id="softDeleteContact">
+        update sp_supplier_contact set deleted=1, is_primary=0, updated_by=#{userId}
+        where id=#{id} and supplier_id=#{supplierId}
+    </update>
+
+    <update id="clearPrimary">
+        update sp_supplier_contact set is_primary=0, updated_by=#{userId}
+        where supplier_id=#{supplierId} and deleted=0 and is_primary=1
+    </update>
+
+    <!-- 原实现用派生表包一层，MySQL 不允许 update 的子查询直接引用同表，保持原样。 -->
+    <update id="promoteFirstContactToPrimary">
+        update sp_supplier_contact set is_primary=1, updated_by=#{userId}
+        where id=(select id from (select id from sp_supplier_contact
+                                  where supplier_id=#{supplierId} and deleted=0 order by id limit 1) c)
+    </update>
+
+    <update id="updatePrimaryContactSnapshot">
+        update sp_supplier_contact
+        set name=#{name}, phone=#{phone,jdbcType=VARCHAR}, email=#{email,jdbcType=VARCHAR},
+            is_primary=1, updated_by=#{userId}
+        where id=#{id}
+    </update>
+
+    <update id="clearSupplierContactSnapshot">
+        update sp_supplier set contact_name=null, contact_phone=null, email=null, updated_by=#{userId}
+        where id=#{supplierId}
+    </update>
+
+    <update id="updateSupplierContactSnapshot">
+        update sp_supplier
+        set contact_name=#{contactName,jdbcType=VARCHAR}, contact_phone=#{contactPhone,jdbcType=VARCHAR},
+            email=#{email,jdbcType=VARCHAR}, updated_by=#{userId}
+        where id=#{supplierId}
+    </update>
+
+    <insert id="insertQualification">
+        insert into sp_supplier_qualification(supplier_id,name,file_id,valid_from,valid_until,status,
+                                              created_by,updated_by)
+        values (#{supplierId}, #{name}, #{fileId,jdbcType=BIGINT}, #{validFrom,jdbcType=DATE},
+                #{validUntil,jdbcType=DATE}, #{status}, #{userId}, #{userId})
+    </insert>
+
+    <update id="updateQualification">
+        update sp_supplier_qualification
+        set name=#{name}, file_id=#{fileId,jdbcType=BIGINT}, valid_from=#{validFrom,jdbcType=DATE},
+            valid_until=#{validUntil,jdbcType=DATE}, status=#{status}, updated_by=#{userId}
+        where id=#{id} and supplier_id=#{supplierId} and deleted=0
+    </update>
+
+    <update id="softDeleteQualification">
+        update sp_supplier_qualification set deleted=1, updated_by=#{userId}
+        where id=#{id} and supplier_id=#{supplierId}
+    </update>
+
+    <insert id="insertEvaluation">
+        insert into sp_supplier_evaluation(supplier_id,period,quality_score,delivery_score,service_score,
+                                           total_score,comment,created_by,updated_by)
+        values (#{supplierId}, #{period}, #{qualityScore}, #{deliveryScore}, #{serviceScore}, #{totalScore},
+                #{comment,jdbcType=VARCHAR}, #{userId}, #{userId})
+    </insert>
+
+    <update id="updateEvaluation">
+        update sp_supplier_evaluation
+        set period=#{period}, quality_score=#{qualityScore}, delivery_score=#{deliveryScore},
+            service_score=#{serviceScore}, total_score=#{totalScore}, comment=#{comment,jdbcType=VARCHAR},
+            updated_by=#{userId}
+        where id=#{id} and supplier_id=#{supplierId} and deleted=0
+    </update>
+
+    <update id="softDeleteEvaluation">
+        update sp_supplier_evaluation set deleted=1, updated_by=#{userId}
+        where id=#{id} and supplier_id=#{supplierId}
+    </update>
+
+    <update id="recalculateScore">
+        update sp_supplier
+        set score=(select coalesce(round(avg(total_score),2),0) from sp_supplier_evaluation
+                   where supplier_id=#{supplierId} and deleted=0),
+            updated_by=#{userId}
+        where id=#{supplierId} and deleted=0
+    </update>
+
+</mapper>

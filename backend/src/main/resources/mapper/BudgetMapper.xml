@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.procuremind.platform.mapper.BudgetMapper">
+
+    <select id="list" resultType="map">
+        select cast(b.id as char) id, cast(b.department_id as char) departmentId,
+               d.code departmentCode, d.name department,
+               b.fiscal_year fiscalYear, b.amount allocated
+        from fin_budget b
+        join sys_department d on d.id=b.department_id
+        where b.fiscal_year=#{fiscalYear}
+        order by d.sort_order, d.id
+    </select>
+
+    <select id="countDepartment" resultType="int">
+        select count(*) from sys_department where id=#{departmentId} and deleted=0
+    </select>
+
+    <insert id="upsert">
+        insert into fin_budget(department_id, fiscal_year, amount, created_by, updated_by)
+        values (#{departmentId}, #{fiscalYear}, #{amount}, #{userId}, #{userId})
+        on duplicate key update amount=values(amount), updated_by=values(updated_by)
+    </insert>
+
+    <!-- 每年每部门一条，limit 1 与原实现取首条等价。 -->
+    <select id="findAllocated" resultType="java.math.BigDecimal">
+        select amount from fin_budget
+        where department_id=#{departmentId} and fiscal_year=#{fiscalYear} limit 1
+    </select>
+
+    <select id="sumRequisitionCommitted" resultType="java.math.BigDecimal">
+        select coalesce(sum(budget_amount), 0) from pr_requisition
+        where department_id=#{departmentId} and deleted=0 and year(created_at)=#{fiscalYear}
+          and status in ('PENDING_APPROVAL', 'APPROVED', 'CONVERTED')
+    </select>
+
+    <select id="sumDirectOrderCommitted" resultType="java.math.BigDecimal">
+        select coalesce(sum(o.total_amount), 0) from po_purchase_order o
+        join sys_user u on u.id=o.purchaser_id
+        where o.requisition_id is null and o.deleted=0 and u.department_id=#{departmentId}
+          and year(o.created_at)=#{fiscalYear}
+          and o.status in ('PENDING_APPROVAL', 'APPROVED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CLOSED')
+    </select>
+
+</mapper>

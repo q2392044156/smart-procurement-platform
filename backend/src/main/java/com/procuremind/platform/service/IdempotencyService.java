@@ -3,10 +3,10 @@ package com.procuremind.platform.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.procuremind.platform.exception.BusinessException;
+import com.procuremind.platform.mapper.IdempotencyMapper;
 import com.procuremind.platform.utils.SecurityUtils;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -27,12 +27,12 @@ public class IdempotencyService {
     /** 自动指纹的有效期：超过该窗口的相同请求视为一次新的业务操作。 */
     private static final int AUTO_TTL_MINUTES = 10;
 
-    private final JdbcTemplate jdbc;
-    private final ObjectMapper mapper;
+    private final IdempotencyMapper records;
+    private final ObjectMapper json;
 
-    public IdempotencyService(JdbcTemplate jdbc, ObjectMapper mapper) {
-        this.jdbc = jdbc;
-        this.mapper = mapper;
+    public IdempotencyService(IdempotencyMapper records, ObjectMapper json) {
+        this.records = records;
+        this.json = json;
     }
 
     public Map<String, Object> execute(String explicitKey, String operation, Object payload,
@@ -47,16 +47,10 @@ public class IdempotencyService {
         long deadline = System.currentTimeMillis() + 15_000;
         while (true) {
             try {
-                jdbc.update("insert into sys_idempotency_record(idempotency_key,user_id,operation,status) values(?,?,?,'PROCESSING')",
-                        key, userId, operation);
+                records.insertProcessing(key, userId, operation);
                 return run(key, userId, operation, action);
             } catch (DuplicateKeyException duplicate) {
-                List<Map<String, Object>> rows = jdbc.queryForList("""
-                        select status,response_json,created_at,
-                               (created_at < utc_timestamp() - interval ? minute) stale
-                        from sys_idempotency_record
-                        where idempotency_key=? and user_id=? and operation=?
-                        """, AUTO_TTL_MINUTES, key, userId, operation);
+                List<Map<String, Object>> rows = records.find(AUTO_TTL_MINUTES, key, userId, operation);
                 if (rows.isEmpty()) {
                     if (System.currentTimeMillis() >= deadline) break;
                     pause();
@@ -94,22 +88,20 @@ public class IdempotencyService {
         try {
             result = action.get();
         } catch (RuntimeException failure) {
-            jdbc.update("update sys_idempotency_record set status='FAILED' where idempotency_key=? and user_id=? and operation=?",
-                    key, userId, operation);
+            records.markFailed(key, userId, operation);
             throw failure;
         }
-        jdbc.update("update sys_idempotency_record set status='COMPLETED',response_json=? where idempotency_key=? and user_id=? and operation=?",
-                writeResponse(result), key, userId, operation);
+        records.markCompleted(key, userId, operation, writeResponse(result));
         return result;
     }
 
     private void remove(String key, Long userId, String operation) {
-        jdbc.update("delete from sys_idempotency_record where idempotency_key=? and user_id=? and operation=?", key, userId, operation);
+        records.remove(key, userId, operation);
     }
 
     private String fingerprint(String operation, Long userId, Object payload) {
         try {
-            String canonical = mapper.writer()
+            String canonical = json.writer()
                     .with(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
                     .writeValueAsString(payload);
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -123,7 +115,7 @@ public class IdempotencyService {
     @SuppressWarnings("unchecked")
     private Map<String, Object> readResponse(Object json) {
         try {
-            return json == null ? Map.of() : mapper.readValue(json.toString(), Map.class);
+            return json == null ? Map.of() : this.json.readValue(json.toString(), Map.class);
         } catch (Exception e) {
             throw new BusinessException(HttpStatus.CONFLICT, "幂等结果解析失败");
         }
@@ -131,7 +123,7 @@ public class IdempotencyService {
 
     private String writeResponse(Map<String, Object> result) {
         try {
-            return mapper.writeValueAsString(result);
+            return json.writeValueAsString(result);
         } catch (Exception e) {
             throw new BusinessException(HttpStatus.INTERNAL_SERVER_ERROR, "幂等结果序列化失败");
         }

@@ -3,6 +3,7 @@ package com.procuremind.platform.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.procuremind.platform.exception.BusinessException;
+import com.procuremind.platform.mapper.MasterDataMapper;
 import com.procuremind.platform.utils.SecurityUtils;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -14,13 +15,11 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,51 +28,22 @@ import java.util.Set;
 
 @Service
 public class MasterDataService {
-    private final JdbcTemplate jdbc;
-    private final ObjectMapper mapper;
+    private final MasterDataMapper mapper;
+    private final ObjectMapper objectMapper;
 
-    public MasterDataService(JdbcTemplate jdbc, ObjectMapper mapper) {
-        this.jdbc = jdbc;
+    public MasterDataService(MasterDataMapper mapper, ObjectMapper objectMapper) {
         this.mapper = mapper;
+        this.objectMapper = objectMapper;
     }
 
-    /** 详情与列表共用同一段投影，避免详情接口另写一份 select 造成列漂移。 */
-    private static final String CATEGORY_SELECT = """
-            select cast(c.id as char) id,cast(c.parent_id as char) parentId,c.code,c.name,c.description,c.sort_order sortOrder,
-                   (select count(*) from md_material m where m.category_id=c.id and m.deleted=0) materialCount
-            from md_material_category c""";
-
-    private static final String MATERIAL_SELECT = """
-            select cast(m.id as char) id,m.code,m.name,cast(m.category_id as char) categoryId,c.name category,
-                   cast(m.unit_id as char) unitId,u.name unit,cast(m.brand_id as char) brandId,b.name brand,
-                   m.specification,m.tracking_mode trackingMode,m.min_stock minStock,m.attributes_json attributes,m.enabled
-            from md_material m join md_material_category c on c.id=m.category_id
-            join md_unit u on u.id=m.unit_id left join md_brand b on b.id=m.brand_id""";
-
-    private static final String WAREHOUSE_SELECT = """
-            select cast(w.id as char) id,w.code,w.name,w.address,w.manager,w.enabled,
-                   (select count(*) from inv_balance b where b.warehouse_id=w.id and b.deleted=0) balanceCount,
-                   (select count(*) from inv_receipt r where r.warehouse_id=w.id and r.deleted=0) receiptCount
-            from md_warehouse w""";
-
-    private static final String UNIT_SELECT = """
-            select cast(u.id as char) id,u.code,u.name,u.precision_scale precisionScale,u.enabled,
-                   (select count(*) from md_material m where m.unit_id=u.id and m.deleted=0) materialCount
-            from md_unit u""";
-
-    private static final String BRAND_SELECT = """
-            select cast(b.id as char) id,b.code,b.name,b.enabled,
-                   (select count(*) from md_material m where m.brand_id=b.id and m.deleted=0) materialCount
-            from md_brand b""";
-
     public List<Map<String, Object>> categories() {
-        List<Map<String, Object>> rows = jdbc.queryForList(CATEGORY_SELECT + " where c.deleted=0 order by c.sort_order,c.id");
+        List<Map<String, Object>> rows = mapper.listCategories();
         rows.forEach(row -> row.put("attributes", attributes(Long.valueOf(row.get("id").toString()))));
         return rows;
     }
 
     public Map<String, Object> category(Long id) {
-        Map<String, Object> row = findOne(CATEGORY_SELECT + " where c.deleted=0 and c.id=?", "物资分类不存在", id);
+        Map<String, Object> row = findOne(mapper.findCategory(id), "物资分类不存在");
         row.put("attributes", attributes(id));
         return row;
     }
@@ -82,9 +52,9 @@ public class MasterDataService {
     public Long createCategory(CategoryRequest request) {
         validateCategoryRequest(null, request);
         Long operator = SecurityUtils.currentUser().id();
-        jdbc.update("insert into md_material_category(parent_id,code,name,description,sort_order,created_by,updated_by) values(?,?,?,?,?,?,?)",
-                request.parentId(), request.code(), request.name(), request.description(), defaultSort(request.sortOrder()), operator, operator);
-        Long id = jdbc.queryForObject("select id from md_material_category where code=?", Long.class, request.code());
+        mapper.insertCategory(request.parentId(), request.code(), request.name(), request.description(),
+                defaultSort(request.sortOrder()), operator);
+        Long id = mapper.findCategoryIdByCode(request.code());
         replaceAttributes(id, request.attributes());
         return id;
     }
@@ -94,18 +64,18 @@ public class MasterDataService {
         requireCategory(id);
         validateCategoryRequest(id, request);
         validateExistingMaterialAttributes(id, request.attributes());
-        jdbc.update("update md_material_category set parent_id=?,code=?,name=?,description=?,sort_order=?,updated_by=? where id=? and deleted=0",
-                request.parentId(), request.code(), request.name(), request.description(), defaultSort(request.sortOrder()), SecurityUtils.currentUser().id(), id);
+        mapper.updateCategory(id, request.parentId(), request.code(), request.name(), request.description(),
+                defaultSort(request.sortOrder()), SecurityUtils.currentUser().id());
         replaceAttributes(id, request.attributes());
     }
 
     @Transactional
     public void deleteCategory(Long id) {
         requireCategory(id);
-        if (count("select count(*) from md_material_category where parent_id=? and deleted=0", id) > 0) throw conflict("分类存在下级分类，不能删除");
-        if (count("select count(*) from md_material where category_id=? and deleted=0", id) > 0) throw conflict("分类已关联物资，不能删除");
-        jdbc.update("delete from md_category_attribute where category_id=?", id);
-        jdbc.update("update md_material_category set deleted=1,updated_by=? where id=?", SecurityUtils.currentUser().id(), id);
+        if (mapper.countCategoryChildren(id) > 0) throw conflict("分类存在下级分类，不能删除");
+        if (mapper.countMaterialByCategory(id) > 0) throw conflict("分类已关联物资，不能删除");
+        mapper.deleteCategoryAttributes(id);
+        mapper.softDeleteCategory(id, SecurityUtils.currentUser().id());
     }
 
     public List<Map<String, Object>> materials(String keyword) {
@@ -114,11 +84,8 @@ public class MasterDataService {
 
     public List<Map<String, Object>> materials(String keyword, String brand, String category,
                                                String specification, String trackingMode) {
-        StringBuilder sql = new StringBuilder(MATERIAL_SELECT).append(" where m.deleted=0");
-        List<Object> args = new ArrayList<>();
-        appendMaterialFilters(sql, args, keyword, brand, category, specification, trackingMode);
-        sql.append(" order by m.id desc");
-        return jdbc.queryForList(sql.toString(), args.toArray());
+        return mapper.listMaterials(filterValue(keyword), filterValue(brand), filterValue(category),
+                filterValue(specification), trackingModeValue(trackingMode));
     }
 
     public Map<String, Object> materialsPage(String keyword, int current, int size) {
@@ -129,74 +96,47 @@ public class MasterDataService {
                                              String specification, String trackingMode, int current, int size) {
         int page = Math.max(current, 1);
         int pageSize = Math.min(Math.max(size, 1), 100);
-        StringBuilder where = new StringBuilder(" where m.deleted=0");
-        List<Object> args = new ArrayList<>();
-        appendMaterialFilters(where, args, keyword, brand, category, specification, trackingMode);
-        Long total = jdbc.queryForObject(
-                "select count(*) from md_material m join md_material_category c on c.id=m.category_id "
-                        + "left join md_brand b on b.id=m.brand_id" + where,
-                Long.class, args.toArray());
-        List<Object> pageArgs = new ArrayList<>(args);
-        pageArgs.add(pageSize);
-        pageArgs.add((page - 1) * pageSize);
-        List<Map<String, Object>> records = jdbc.queryForList(MATERIAL_SELECT + where + " order by m.id desc limit ? offset ?",
-                pageArgs.toArray());
-        long totalCount = total == null ? 0 : total;
+        String normalizedKeyword = filterValue(keyword);
+        String normalizedBrand = filterValue(brand);
+        String normalizedCategory = filterValue(category);
+        String normalizedSpecification = filterValue(specification);
+        String normalizedTrackingMode = trackingModeValue(trackingMode);
+        long total = mapper.countMaterialsPage(normalizedKeyword, normalizedBrand, normalizedCategory,
+                normalizedSpecification, normalizedTrackingMode);
+        List<Map<String, Object>> records = mapper.pageMaterials(normalizedKeyword, normalizedBrand,
+                normalizedCategory, normalizedSpecification, normalizedTrackingMode, pageSize, (page - 1) * pageSize);
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("records", records);
-        result.put("total", (int) totalCount);
+        result.put("total", (int) total);
         result.put("current", page);
         result.put("size", pageSize);
-        result.put("pages", (int) ((totalCount + pageSize - 1) / pageSize));
+        result.put("pages", (int) ((total + pageSize - 1) / pageSize));
         return result;
     }
 
-    /** 物资模糊检索：编码/名称/品牌/规格/分类；品牌、规格、追踪方式可单独过滤。 */
-    private void appendMaterialFilters(StringBuilder sql, List<Object> args, String keyword,
-                                       String brand, String category, String specification,
-                                       String trackingMode) {
-        if (keyword != null && !keyword.isBlank()) {
-            String like = "%" + keyword.trim() + "%";
-            sql.append(" and (m.code like ? or m.name like ? or b.name like ?"
-                    + " or m.specification like ? or c.name like ?)");
-            args.add(like);
-            args.add(like);
-            args.add(like);
-            args.add(like);
-            args.add(like);
-        }
-        if (brand != null && !brand.isBlank()) {
-            sql.append(" and b.name like ?");
-            args.add("%" + brand.trim() + "%");
-        }
-        if (category != null && !category.isBlank()) {
-            sql.append(" and c.name like ?");
-            args.add("%" + category.trim() + "%");
-        }
-        if (specification != null && !specification.isBlank()) {
-            sql.append(" and m.specification like ?");
-            args.add("%" + specification.trim() + "%");
-        }
-        if (trackingMode != null && !trackingMode.isBlank()) {
-            sql.append(" and m.tracking_mode = ?");
-            args.add(trackingMode.trim().toUpperCase());
-        }
+    /** 空白查询条件按“未传”处理，与原先 appendMaterialFilters 里 isBlank 跳过等价。 */
+    private String filterValue(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    /** 追踪方式原来就是 trim 后转大写再匹配。 */
+    private String trackingModeValue(String value) {
+        String normalized = filterValue(value);
+        return normalized == null ? null : normalized.toUpperCase();
     }
 
     public Map<String, Object> material(Long id) {
-        return findOne(MATERIAL_SELECT + " where m.deleted=0 and m.id=?", "物资不存在", id);
+        return findOne(mapper.findMaterial(id), "物资不存在");
     }
 
     @Transactional
     public Long createMaterial(MaterialRequest request) {
         validateMaterialRequest(null, request);
         Long operator = SecurityUtils.currentUser().id();
-        jdbc.update("""
-                insert into md_material(code,name,category_id,unit_id,brand_id,specification,tracking_mode,min_stock,attributes_json,created_by,updated_by)
-                values(?,?,?,?,?,?,?,?,?,?,?)
-                """, request.code(), request.name(), request.categoryId(), request.unitId(), request.brandId(), request.specification(),
-                request.trackingMode(), defaultStock(request.minStock()), json(request.attributes()), operator, operator);
-        return jdbc.queryForObject("select id from md_material where code=?", Long.class, request.code());
+        mapper.insertMaterial(request.code(), request.name(), request.categoryId(), request.unitId(), request.brandId(),
+                request.specification(), request.trackingMode(), defaultStock(request.minStock()),
+                json(request.attributes()), operator);
+        return mapper.findMaterialIdByCode(request.code());
     }
 
     @Transactional
@@ -206,138 +146,131 @@ public class MasterDataService {
         if (!existing.get("trackingMode").toString().equals(request.trackingMode()) && hasInventoryHistory(id))
             throw conflict("物资已有库存记录，不能修改库存跟踪方式");
         validateMaterialRequest(id, request);
-        jdbc.update("""
-                update md_material set name=?,category_id=?,unit_id=?,brand_id=?,specification=?,tracking_mode=?,min_stock=?,attributes_json=?,updated_by=?
-                where id=? and deleted=0
-                """, request.name(), request.categoryId(), request.unitId(), request.brandId(), request.specification(), request.trackingMode(),
-                defaultStock(request.minStock()), json(request.attributes()), SecurityUtils.currentUser().id(), id);
+        mapper.updateMaterial(id, request.name(), request.categoryId(), request.unitId(), request.brandId(),
+                request.specification(), request.trackingMode(), defaultStock(request.minStock()),
+                json(request.attributes()), SecurityUtils.currentUser().id());
     }
 
     public void setMaterialStatus(Long id, boolean enabled) {
         requireMaterial(id);
-        jdbc.update("update md_material set enabled=?,updated_by=? where id=? and deleted=0", enabled, SecurityUtils.currentUser().id(), id);
+        mapper.updateMaterialStatus(id, enabled, SecurityUtils.currentUser().id());
     }
 
     @Transactional
     public void deleteMaterial(Long id) {
         requireMaterial(id);
-        if (count("select count(*) from pr_requisition_item where material_id=? and deleted=0", id) > 0
-                || count("select count(*) from po_purchase_order_item where material_id=? and deleted=0", id) > 0
-                || count("select count(*) from inv_receipt_item where material_id=? and deleted=0", id) > 0
-                || count("select count(*) from inv_balance where material_id=? and deleted=0", id) > 0
-                || count("select count(*) from inv_ledger where material_id=?", id) > 0)
+        if (mapper.countRequisitionItemByMaterial(id) > 0
+                || mapper.countPurchaseOrderItemByMaterial(id) > 0
+                || mapper.countReceiptItemByMaterial(id) > 0
+                || mapper.countBalanceByMaterial(id) > 0
+                || mapper.countLedgerByMaterial(id) > 0)
             throw conflict("物资已有采购或库存记录，只能停用");
-        jdbc.update("update md_material set enabled=0,deleted=1,updated_by=? where id=?", SecurityUtils.currentUser().id(), id);
+        mapper.softDeleteMaterial(id, SecurityUtils.currentUser().id());
     }
 
     public List<Map<String, Object>> warehouses() {
-        return jdbc.queryForList(WAREHOUSE_SELECT + " where w.deleted=0 order by w.id");
+        return mapper.listWarehouses();
     }
 
     public Map<String, Object> warehouse(Long id) {
-        return findOne(WAREHOUSE_SELECT + " where w.deleted=0 and w.id=?", "仓库不存在", id);
+        return findOne(mapper.findWarehouse(id), "仓库不存在");
     }
 
     @Transactional
     public Long createWarehouse(WarehouseRequest request) {
         Long operator = SecurityUtils.currentUser().id();
-        jdbc.update("insert into md_warehouse(code,name,address,manager,enabled,created_by,updated_by) values(?,?,?,?,1,?,?)",
-                request.code(), request.name(), request.address(), request.manager(), operator, operator);
-        return jdbc.queryForObject("select id from md_warehouse where code=?", Long.class, request.code());
+        mapper.insertWarehouse(request.code(), request.name(), request.address(), request.manager(), operator);
+        return mapper.findWarehouseIdByCode(request.code());
     }
 
     public void updateWarehouse(Long id, WarehouseRequest request) {
         requireWarehouse(id, false);
-        jdbc.update("update md_warehouse set code=?,name=?,address=?,manager=?,updated_by=? where id=? and deleted=0",
-                request.code(), request.name(), request.address(), request.manager(), SecurityUtils.currentUser().id(), id);
+        mapper.updateWarehouse(id, request.code(), request.name(), request.address(), request.manager(),
+                SecurityUtils.currentUser().id());
     }
 
     public void setWarehouseStatus(Long id, boolean enabled) {
         requireWarehouse(id, false);
-        if (!enabled && count("select count(*) from inv_balance where warehouse_id=? and deleted=0 and quantity<>0", id) > 0)
+        if (!enabled && mapper.countBalanceWithStock(id) > 0)
             throw conflict("仓库仍有库存，不能停用");
-        jdbc.update("update md_warehouse set enabled=?,updated_by=? where id=? and deleted=0", enabled, SecurityUtils.currentUser().id(), id);
+        mapper.updateWarehouseStatus(id, enabled, SecurityUtils.currentUser().id());
     }
 
     public void deleteWarehouse(Long id) {
         requireWarehouse(id, false);
-        if (count("select count(*) from inv_receipt where warehouse_id=? and deleted=0", id) > 0
-                || count("select count(*) from inv_balance where warehouse_id=? and deleted=0", id) > 0
-                || count("select count(*) from inv_ledger where warehouse_id=?", id) > 0
-                || count("select count(*) from inv_batch where warehouse_id=?", id) > 0
-                || count("select count(*) from inv_serial where warehouse_id=?", id) > 0)
+        if (mapper.countReceiptByWarehouse(id) > 0
+                || mapper.countBalanceByWarehouse(id) > 0
+                || mapper.countLedgerByWarehouse(id) > 0
+                || mapper.countBatchByWarehouse(id) > 0
+                || mapper.countSerialByWarehouse(id) > 0)
             throw conflict("仓库已有收货或库存记录，只能停用");
-        jdbc.update("update md_warehouse set enabled=0,deleted=1,updated_by=? where id=?", SecurityUtils.currentUser().id(), id);
+        mapper.softDeleteWarehouse(id, SecurityUtils.currentUser().id());
     }
 
     public List<Map<String, Object>> units() {
-        return jdbc.queryForList(UNIT_SELECT + " where u.deleted=0 order by u.id");
+        return mapper.listUnits();
     }
 
     public Map<String, Object> unit(Long id) {
-        return findOne(UNIT_SELECT + " where u.deleted=0 and u.id=?", "计量单位不存在", id);
+        return findOne(mapper.findUnit(id), "计量单位不存在");
     }
 
     @Transactional
     public Long createUnit(UnitRequest request) {
         Long operator = SecurityUtils.currentUser().id();
-        jdbc.update("insert into md_unit(code,name,precision_scale,enabled,created_by,updated_by) values(?,?,?,1,?,?)",
-                request.code(), request.name(), request.precisionScale(), operator, operator);
-        return jdbc.queryForObject("select id from md_unit where code=?", Long.class, request.code());
+        mapper.insertUnit(request.code(), request.name(), request.precisionScale(), operator);
+        return mapper.findUnitIdByCode(request.code());
     }
 
     public void updateUnit(Long id, UnitRequest request) {
         requireUnit(id, false);
-        if (count("select count(*) from md_material m join po_purchase_order_item i on i.material_id=m.id and i.deleted=0 where m.unit_id=? and m.deleted=0", id) > 0) {
-            Integer current = jdbc.queryForObject("select precision_scale from md_unit where id=?", Integer.class, id);
+        if (mapper.countUnitUsedInPurchaseOrders(id) > 0) {
+            Integer current = mapper.findUnitPrecisionScale(id);
             if (current != null && !current.equals(request.precisionScale())) throw conflict("计量单位已用于采购订单，不能修改小数精度");
         }
-        jdbc.update("update md_unit set code=?,name=?,precision_scale=?,updated_by=? where id=? and deleted=0",
-                request.code(), request.name(), request.precisionScale(), SecurityUtils.currentUser().id(), id);
+        mapper.updateUnit(id, request.code(), request.name(), request.precisionScale(), SecurityUtils.currentUser().id());
     }
 
     public void setUnitStatus(Long id, boolean enabled) {
         requireUnit(id, false);
-        jdbc.update("update md_unit set enabled=?,updated_by=? where id=? and deleted=0", enabled, SecurityUtils.currentUser().id(), id);
+        mapper.updateUnitStatus(id, enabled, SecurityUtils.currentUser().id());
     }
 
     public void deleteUnit(Long id) {
         requireUnit(id, false);
-        if (count("select count(*) from md_material where unit_id=? and deleted=0", id) > 0) throw conflict("计量单位已被物资引用，只能停用");
-        jdbc.update("update md_unit set enabled=0,deleted=1,updated_by=? where id=?", SecurityUtils.currentUser().id(), id);
+        if (mapper.countMaterialByUnit(id) > 0) throw conflict("计量单位已被物资引用，只能停用");
+        mapper.softDeleteUnit(id, SecurityUtils.currentUser().id());
     }
 
     public List<Map<String, Object>> brands() {
-        return jdbc.queryForList(BRAND_SELECT + " where b.deleted=0 order by b.id");
+        return mapper.listBrands();
     }
 
     public Map<String, Object> brand(Long id) {
-        return findOne(BRAND_SELECT + " where b.deleted=0 and b.id=?", "品牌不存在", id);
+        return findOne(mapper.findBrand(id), "品牌不存在");
     }
 
     @Transactional
     public Long createBrand(BrandRequest request) {
         Long operator = SecurityUtils.currentUser().id();
-        jdbc.update("insert into md_brand(code,name,enabled,created_by,updated_by) values(?,?,1,?,?)",
-                request.code(), request.name(), operator, operator);
-        return jdbc.queryForObject("select id from md_brand where code=?", Long.class, request.code());
+        mapper.insertBrand(request.code(), request.name(), operator);
+        return mapper.findBrandIdByCode(request.code());
     }
 
     public void updateBrand(Long id, BrandRequest request) {
         requireBrand(id, false);
-        jdbc.update("update md_brand set code=?,name=?,updated_by=? where id=? and deleted=0",
-                request.code(), request.name(), SecurityUtils.currentUser().id(), id);
+        mapper.updateBrand(id, request.code(), request.name(), SecurityUtils.currentUser().id());
     }
 
     public void setBrandStatus(Long id, boolean enabled) {
         requireBrand(id, false);
-        jdbc.update("update md_brand set enabled=?,updated_by=? where id=? and deleted=0", enabled, SecurityUtils.currentUser().id(), id);
+        mapper.updateBrandStatus(id, enabled, SecurityUtils.currentUser().id());
     }
 
     public void deleteBrand(Long id) {
         requireBrand(id, false);
-        if (count("select count(*) from md_material where brand_id=? and deleted=0", id) > 0) throw conflict("品牌已被物资引用，只能停用");
-        jdbc.update("update md_brand set enabled=0,deleted=1,updated_by=? where id=?", SecurityUtils.currentUser().id(), id);
+        if (mapper.countMaterialByBrand(id) > 0) throw conflict("品牌已被物资引用，只能停用");
+        mapper.softDeleteBrand(id, SecurityUtils.currentUser().id());
     }
 
     private void validateCategoryRequest(Long id, CategoryRequest request) {
@@ -365,7 +298,7 @@ public class MasterDataService {
         if (definitions != null) definitions.forEach(definition -> next.put(definition.code(), definition));
         Set<String> previousCodes = new HashSet<>();
         attributes(categoryId).forEach(attribute -> previousCodes.add(attribute.get("code").toString()));
-        List<Map<String, Object>> values = jdbc.queryForList("select code,attributes_json attributes from md_material where category_id=? and deleted=0", categoryId);
+        List<Map<String, Object>> values = mapper.listMaterialAttributeValues(categoryId);
         for (Map<String, Object> row : values) {
             Map<String, Object> materialValues = objectMap(row.get("attributes"));
             for (String removed : previousCodes) {
@@ -422,21 +355,15 @@ public class MasterDataService {
     }
 
     private List<Map<String, Object>> attributes(Long categoryId) {
-        return jdbc.queryForList("""
-                select cast(id as char) id,code,name,value_type valueType,required,options_json options,sort_order sortOrder
-                from md_category_attribute where category_id=? order by sort_order,id
-                """, categoryId);
+        return mapper.listCategoryAttributes(categoryId);
     }
 
     private void replaceAttributes(Long categoryId, List<AttributeRequest> definitions) {
-        jdbc.update("delete from md_category_attribute where category_id=?", categoryId);
+        mapper.deleteCategoryAttributes(categoryId);
         if (definitions == null) return;
         for (AttributeRequest definition : definitions) {
-            jdbc.update("""
-                    insert into md_category_attribute(category_id,code,name,value_type,required,options_json,sort_order)
-                    values(?,?,?,?,?,?,?)
-                    """, categoryId, definition.code(), definition.name(), definition.valueType(), Boolean.TRUE.equals(definition.required()),
-                    json(definition.options()), defaultSort(definition.sortOrder()));
+            mapper.insertCategoryAttribute(categoryId, definition.code(), definition.name(), definition.valueType(),
+                    Boolean.TRUE.equals(definition.required()), json(definition.options()), defaultSort(definition.sortOrder()));
         }
     }
 
@@ -445,48 +372,44 @@ public class MasterDataService {
         Long current = parentId;
         while (current != null) {
             if (current.equals(id) || !visited.add(current)) throw conflict("上级分类设置会形成循环");
-            List<Long> parents = jdbc.query("select parent_id from md_material_category where id=? and deleted=0", (rs, n) -> {
-                long value = rs.getLong(1);
-                return rs.wasNull() ? null : value;
-            }, current);
-            current = parents.isEmpty() ? null : parents.getFirst();
+            current = mapper.findParentId(current);
         }
     }
 
     private boolean hasInventoryHistory(Long materialId) {
-        return count("select count(*) from inv_ledger where material_id=?", materialId) > 0
-                || count("select count(*) from inv_receipt_item where material_id=? and deleted=0", materialId) > 0
-                || count("select count(*) from inv_balance where material_id=? and deleted=0", materialId) > 0;
+        return mapper.countLedgerByMaterial(materialId) > 0
+                || mapper.countReceiptItemByMaterial(materialId) > 0
+                || mapper.countBalanceByMaterial(materialId) > 0;
     }
 
     private void requireCategory(Long id) {
-        if (count("select count(*) from md_material_category where id=? and deleted=0", id) == 0) throw new BusinessException(HttpStatus.BAD_REQUEST, "物资分类不存在");
+        if (mapper.countCategoryById(id) == 0) throw new BusinessException(HttpStatus.BAD_REQUEST, "物资分类不存在");
     }
 
     private void requireMaterial(Long id) {
-        if (count("select count(*) from md_material where id=? and deleted=0", id) == 0) throw notFound("物资不存在");
+        if (mapper.countMaterialById(id) == 0) throw notFound("物资不存在");
     }
 
     private void requireWarehouse(Long id, boolean enabled) {
-        if (count("select count(*) from md_warehouse where id=? and deleted=0" + (enabled ? " and enabled=1" : ""), id) == 0)
+        if (mapper.countWarehouseById(id, enabled) == 0)
             throw new BusinessException(HttpStatus.BAD_REQUEST, "仓库不存在或不可用");
     }
 
     private void requireUnit(Long id, boolean enabled) {
-        if (count("select count(*) from md_unit where id=? and deleted=0" + (enabled ? " and enabled=1" : ""), id) == 0)
+        if (mapper.countUnitById(id, enabled) == 0)
             throw new BusinessException(HttpStatus.BAD_REQUEST, "计量单位不存在或不可用");
     }
 
     private void requireBrand(Long id, boolean enabled) {
-        if (count("select count(*) from md_brand where id=? and deleted=0" + (enabled ? " and enabled=1" : ""), id) == 0)
+        if (mapper.countBrandById(id, enabled) == 0)
             throw new BusinessException(HttpStatus.BAD_REQUEST, "品牌不存在或不可用");
     }
 
     private Map<String, Object> objectMap(Object value) {
         if (value == null) return Map.of();
         try {
-            if (value instanceof String string) return mapper.readValue(string, new TypeReference<>() {});
-            return mapper.convertValue(value, new TypeReference<>() {});
+            if (value instanceof String string) return objectMapper.readValue(string, new TypeReference<>() {});
+            return objectMapper.convertValue(value, new TypeReference<>() {});
         } catch (Exception e) {
             throw new BusinessException(HttpStatus.CONFLICT, "已有物资动态属性数据无法解析");
         }
@@ -495,8 +418,8 @@ public class MasterDataService {
     private List<String> parseOptions(Object value) {
         if (value == null) return null;
         try {
-            if (value instanceof String string) return mapper.readValue(string, new TypeReference<>() {});
-            return mapper.convertValue(value, new TypeReference<>() {});
+            if (value instanceof String string) return objectMapper.readValue(string, new TypeReference<>() {});
+            return objectMapper.convertValue(value, new TypeReference<>() {});
         } catch (Exception e) {
             throw new BusinessException(HttpStatus.CONFLICT, "动态属性枚举定义无法解析");
         }
@@ -504,7 +427,7 @@ public class MasterDataService {
 
     private String json(Object value) {
         if (value == null) return null;
-        try { return mapper.writeValueAsString(value); }
+        try { return objectMapper.writeValueAsString(value); }
         catch (Exception e) { throw new BusinessException(HttpStatus.BAD_REQUEST, "JSON数据格式错误"); }
     }
 
@@ -514,11 +437,11 @@ public class MasterDataService {
 
     private int defaultSort(Integer value) { return value == null ? 0 : value; }
     private BigDecimal defaultStock(BigDecimal value) { return value == null ? BigDecimal.ZERO : value; }
-    private Map<String, Object> findOne(String sql, String message, Object... args) {
-        return jdbc.queryForList(sql, args).stream().findFirst().orElseThrow(() -> notFound(message));
+    private Map<String, Object> findOne(Map<String, Object> row, String message) {
+        if (row == null) throw notFound(message);
+        return row;
     }
 
-    private long count(String sql, Object... args) { Long value = jdbc.queryForObject(sql, Long.class, args); return value == null ? 0 : value; }
     private BusinessException conflict(String message) { return new BusinessException(HttpStatus.CONFLICT, message); }
     private BusinessException notFound(String message) { return new BusinessException(HttpStatus.NOT_FOUND, message); }
 

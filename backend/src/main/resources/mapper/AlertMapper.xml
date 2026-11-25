@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.procuremind.platform.mapper.AlertMapper">
+
+    <select id="expiringQualifications" resultType="map">
+        select cast(q.id as char) id, cast(q.supplier_id as char) supplierId,
+               s.name supplierName, s.code supplierCode,
+               q.name qualification, q.valid_until validUntil,
+               datediff(q.valid_until, current_date) daysLeft
+        from sp_supplier_qualification q
+        join sp_supplier s on s.id=q.supplier_id
+        where q.deleted=0 and s.deleted=0 and q.status&lt;&gt;'REVOKED' and q.valid_until is not null
+          and q.valid_until &lt;= date_add(current_date, interval #{windowDays} day)
+        order by q.valid_until
+    </select>
+
+    <select id="dueDeliveries" resultType="map">
+        select cast(o.id as char) id, o.order_no orderNo, s.name supplierName, o.status,
+               o.delivery_date deliveryDate, datediff(o.delivery_date, current_date) daysLeft,
+               o.total_amount totalAmount
+        from po_purchase_order o
+        join sp_supplier s on s.id=o.supplier_id
+        where o.deleted=0 and o.status in ('APPROVED', 'PARTIALLY_RECEIVED')
+          and o.delivery_date &lt;= date_add(current_date, interval #{windowDays} day)
+        order by o.delivery_date
+    </select>
+
+    <select id="staleApprovals" resultType="map">
+        select * from (
+            select 'REQUISITION' businessType, cast(r.id as char) id, r.requisition_no businessNo,
+                   r.budget_amount amount, timestampdiff(hour, r.updated_at, utc_timestamp()) waitingHours
+            from pr_requisition r
+            where r.deleted=0 and r.status='PENDING_APPROVAL'
+              and r.updated_at &lt;= utc_timestamp() - interval #{windowHours} hour
+            union all
+            select 'PURCHASE_ORDER', cast(o.id as char) id, o.order_no businessNo,
+                   o.total_amount amount, timestampdiff(hour, o.updated_at, utc_timestamp()) waitingHours
+            from po_purchase_order o
+            where o.deleted=0 and o.status='PENDING_APPROVAL'
+              and o.updated_at &lt;= utc_timestamp() - interval #{windowHours} hour
+        ) pending order by waitingHours desc
+    </select>
+
+</mapper>
