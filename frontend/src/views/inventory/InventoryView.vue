@@ -13,12 +13,27 @@ const issueDialog=ref(false),issuing=ref(false)
 const issueForm=reactive<Dict>({warehouseId:'',materialId:'',quantity:1,batchNo:'',serialText:'',purpose:'',remark:''})
 const selectedMaterial=computed(()=>materials.value.find(m=>m.id===issueForm.materialId))
 
-async function load(){
-  const [balanceRows,ledgerRows,receiptRows,issueRows]=await Promise.all([
-    http.get('/inventory/balances'),http.get('/inventory/ledger'),http.get('/receipts'),http.get('/inventory/issues')
-  ])
-  balances.value=balanceRows;ledger.value=ledgerRows;receipts.value=receiptRows;issues.value=issueRows.records
+const keyword=ref('')
+const pages=reactive({balance:{current:1,size:10,total:0},ledger:{current:1,size:20,total:0},receipt:{current:1,size:10,total:0},issue:{current:1,size:10,total:0}})
+
+async function loadBalances(){
+  const r=await http.get('/inventory/balances/page',{params:{keyword:keyword.value,current:pages.balance.current,size:pages.balance.size}})
+  balances.value=r.records;pages.balance.total=r.total
 }
+async function loadLedger(){
+  const r=await http.get('/inventory/ledger/page',{params:{keyword:keyword.value,current:pages.ledger.current,size:pages.ledger.size}})
+  ledger.value=r.records;pages.ledger.total=r.total
+}
+async function loadReceipts(){
+  const r=await http.get('/receipts/page',{params:{orderNo:keyword.value,current:pages.receipt.current,size:pages.receipt.size}})
+  receipts.value=r.records;pages.receipt.total=r.total
+}
+async function loadIssues(){
+  const r=await http.get('/inventory/issues',{params:{keyword:keyword.value,current:pages.issue.current,size:pages.issue.size}})
+  issues.value=r.records;pages.issue.total=r.total
+}
+async function load(){await Promise.all([loadBalances(),loadLedger(),loadReceipts(),loadIssues()])}
+function search(){for(const p of Object.values(pages)) p.current=1;load()}
 async function openReceipt(row:Dict){detail.value=await http.get(`/receipts/${row.id}`);drawer.value=true}
 function serialText(value:unknown){if(!value)return '—';if(Array.isArray(value))return value.join('、');try{return JSON.parse(String(value)).join('、')}catch{return String(value)}}
 
@@ -64,18 +79,26 @@ onMounted(load)
       </div>
     </div>
     <div class="panel panel-pad">
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <el-input v-model="keyword" placeholder="物资编码 / 名称 / 批次 / 单号" clearable style="width:280px" @keyup.enter="search" @clear="search" />
+        <el-button type="primary" plain @click="search">查询</el-button>
+      </div>
       <el-tabs v-model="tab">
         <el-tab-pane label="库存余额" name="balance">
           <el-table :data="balances"><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="materialCode" label="物资编码"/><el-table-column prop="materialName" label="物资名称"/><el-table-column prop="trackingMode" label="跟踪方式"/><el-table-column prop="quantity" label="当前库存"/><el-table-column prop="minStock" label="安全库存"/><el-table-column label="状态"><template #default="s"><el-tag :type="s.row.lowStock?'danger':'success'">{{s.row.lowStock?'库存偏低':'正常'}}</el-tag></template></el-table-column></el-table>
+          <el-pagination style="margin-top:12px" layout="total, sizes, prev, pager, next" :total="pages.balance.total" v-model:current-page="pages.balance.current" v-model:page-size="pages.balance.size" :page-sizes="[10,20,50]" @current-change="loadBalances" @size-change="search" />
         </el-tab-pane>
         <el-tab-pane label="库存流水" name="ledger">
           <el-table :data="ledger"><el-table-column prop="createdAt" label="时间" width="180"/><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="materialName" label="物资"/><el-table-column prop="businessType" label="业务类型"/><el-table-column prop="direction" label="方向"/><el-table-column prop="quantity" label="变动数量"/><el-table-column prop="balanceAfter" label="结存"/><el-table-column prop="batchNo" label="批次"/></el-table>
+          <el-pagination style="margin-top:12px" layout="total, sizes, prev, pager, next" :total="pages.ledger.total" v-model:current-page="pages.ledger.current" v-model:page-size="pages.ledger.size" :page-sizes="[20,50,100]" @current-change="loadLedger" @size-change="search" />
         </el-tab-pane>
         <el-tab-pane label="收货记录" name="receipt">
           <el-table :data="receipts"><el-table-column prop="receiptNo" label="收货单号" width="180"/><el-table-column prop="orderNo" label="订单号" width="180"/><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="receiver" label="收货人"/><el-table-column prop="receiptDate" label="收货时间" width="170"/><el-table-column prop="itemCount" label="明细数" width="80"/><el-table-column prop="remark" label="备注"/><el-table-column label="操作" width="80"><template #default="s"><el-button link type="primary" @click="openReceipt(s.row)">详情</el-button></template></el-table-column></el-table>
+          <el-pagination style="margin-top:12px" layout="total, sizes, prev, pager, next" :total="pages.receipt.total" v-model:current-page="pages.receipt.current" v-model:page-size="pages.receipt.size" :page-sizes="[10,20,50]" @current-change="loadReceipts" @size-change="search" />
         </el-tab-pane>
         <el-tab-pane label="出库记录" name="issue">
           <el-table :data="issues"><el-table-column prop="issueNo" label="出库单号" width="180"/><el-table-column prop="warehouse" label="仓库"/><el-table-column prop="materialName" label="物资"/><el-table-column prop="quantity" label="数量" width="90"/><el-table-column prop="batchNo" label="批次"/><el-table-column prop="purpose" label="用途"/><el-table-column prop="department" label="领用部门"/><el-table-column prop="requester" label="领用人"/><el-table-column prop="issuedAt" label="出库时间" width="170"/></el-table>
+          <el-pagination style="margin-top:12px" layout="total, sizes, prev, pager, next" :total="pages.issue.total" v-model:current-page="pages.issue.current" v-model:page-size="pages.issue.size" :page-sizes="[10,20,50]" @current-change="loadIssues" @size-change="search" />
         </el-tab-pane>
       </el-tabs>
     </div>
