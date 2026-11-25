@@ -119,7 +119,7 @@
     </update>
 
     <select id="lockById" resultType="map">
-        select purchaser_id, requisition_id, supplier_id, status
+        select order_no, purchaser_id, requisition_id, supplier_id, status, total_amount
         from po_purchase_order
         where id=#{id} and deleted=0 for update
     </select>
