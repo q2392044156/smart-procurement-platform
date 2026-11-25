@@ -26,8 +26,8 @@ public class AlertService {
         int deliveryWindow = clamp(deliveryDays, 0, 365);
         int approvalWindow = clamp(approvalHours, 1, 720);
 
-        List<Map<String, Object>> qualifications = mapper.expiringQualifications(qualificationWindow);
-        List<Map<String, Object>> deliveries = mapper.dueDeliveries(deliveryWindow);
+        List<Map<String, Object>> qualifications = normalizeDays(mapper.expiringQualifications(qualificationWindow));
+        List<Map<String, Object>> deliveries = normalizeDays(mapper.dueDeliveries(deliveryWindow));
         List<Map<String, Object>> approvals = mapper.staleApprovals(approvalWindow);
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -40,6 +40,35 @@ public class AlertService {
                 "订单交付临期或已逾期"));
         result.put("approvals", block("olderThanHours", approvalWindow, approvals, 0L, "审批积压"));
         return result;
+    }
+
+    /**
+     * 把 {@code datediff()} 的结果统一成 int。
+     *
+     * <p>同一条 SQL 在不同环境可能被驱动读成 {@code Long}（BIGINT）或 {@code String}，
+     * 而全局 Jackson 又把 Long 写成字符串——于是同一个字段有时是 {@code "3"}、有时是 {@code 3}，
+     * 契约和前端渲染都会抖。这里定死成数值，顺带让 {@code daysLeft < 0} 的判定不再依赖转型。</p>
+     */
+    private static List<Map<String, Object>> normalizeDays(List<Map<String, Object>> rows) {
+        return rows.stream().map(row -> {
+            Map<String, Object> copy = new LinkedHashMap<>(row);
+            copy.put("daysLeft", daysLeft(row.get("daysLeft")));
+            return copy;
+        }).toList();
+    }
+
+    private static int daysLeft(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return Integer.parseInt(text.trim());
+            } catch (NumberFormatException ignored) {
+                return 0;
+            }
+        }
+        return 0;
     }
 
     private Map<String, Object> block(String windowKey, int window, List<Map<String, Object>> items, long overdue, String message) {

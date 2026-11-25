@@ -761,7 +761,7 @@
         "$items" : {
           "$type" : "object",
           "daysLeft" : {
-            "$type" : "string"
+            "$type" : "number"
           },
           "id" : {
             "$type" : "string"
